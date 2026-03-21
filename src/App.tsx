@@ -15,13 +15,15 @@ import OrdersPage from './pages/OrdersPage';
 import NewOrderPage from './pages/NewOrderPage';
 import OrderDetailPage from './pages/OrderDetailPage';
 import ReportPage from './pages/ReportPage';
+import ReglagesPage from './pages/ReglagesPage';
+import { Settings as SettingsIcon } from 'lucide-react';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Accueil' },
-  { to: '/stock', icon: Package, label: 'Stock' },
+  // { to: '/stock', icon: Package, label: 'Stock' },
   { to: '/orders', icon: ShoppingCart, label: 'Commandes' },
-  { to: '/orders/new', icon: PlusCircle, label: 'Nouvelle' },
   { to: '/report', icon: FileText, label: 'Rapport' },
+  { to: '/settings', icon: SettingsIcon, label: 'Réglages' },
 ];
 
 export default function App() {
@@ -36,11 +38,12 @@ export default function App() {
       <Toaster position="top-center" reverseOrder={false} />
       <Routes>
         <Route path="/" element={<DashboardPage />} />
-        <Route path="/stock" element={<StockPage />} />
+        {/* <Route path="/stock" element={<StockPage />} /> */}
         <Route path="/orders" element={<OrdersPage />} />
         <Route path="/orders/new" element={<NewOrderPage />} />
         <Route path="/orders/:id" element={<OrderDetailPage />} />
         <Route path="/report" element={<ReportPage />} />
+        <Route path="/settings" element={<ReglagesPage />} />
       </Routes>
 
       <nav className="bottom-nav">

@@ -103,20 +103,33 @@ export default function DashboardPage() {
       </div>
 
       {/* Cycle Actions */}
-      <div style={{ marginBottom: '1.5rem', display: 'flex', gap: '0.75rem' }}>
+      <div style={{ marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
         {!activeCycle ? (
-          <button className="btn-primary" style={{ flex: 1 }} onClick={() => setShowStartModal(true)}>
+          <button className="btn-primary" style={{ width: '100%' }} onClick={() => setShowStartModal(true)}>
             <Play size={16} /> Démarrer un cycle
           </button>
         ) : (
-          <>
-            <button className="btn-secondary" style={{ flex: 1 }} onClick={handleGenerateReport}>
-              <FileText size={16} /> Rapport
-            </button>
-            <button className="btn-primary" style={{ flex: 1, backgroundColor: 'var(--color-error)' }} onClick={handleCloseCycle}>
-              <AlertCircle size={16} /> Clôturer Cycle
-            </button>
-          </>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button className="btn-secondary" style={{ flex: 1 }} onClick={handleGenerateReport}>
+                <FileText size={16} /> Rapport
+              </button>
+              
+              {activeCycle.remainingStock === 0 && orders.filter(o => o.cycleId === activeCycle.id).every(o => o.status === 'PAYEE' || o.status === 'ANNULEE') ? (
+                <button className="btn-primary" style={{ flex: 1, backgroundColor: 'var(--color-error)' }} onClick={handleCloseCycle}>
+                  <AlertCircle size={16} /> Clôturer Cycle
+                </button>
+              ) : (
+                <div style={{ 
+                  flex: 1, padding: '0.75rem', borderRadius: 12, background: 'rgba(239, 68, 68, 0.1)', 
+                  border: '1px solid rgba(239, 68, 68, 0.2)', display: 'flex', alignItems: 'center', 
+                  justifyContent: 'center', gap: '0.5rem', color: 'var(--color-danger)', fontSize: '0.75rem', textAlign: 'center'
+                }}>
+                  <Clock size={14} /> Clôture bloquée : {activeCycle.remainingStock > 0 ? `Stock rest. (${activeCycle.remainingStock})` : 'Commandes en cours'}
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </div>
 
@@ -155,26 +168,38 @@ export default function DashboardPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', marginBottom: '1.5rem' }}>
         <div className="kpi-card">
           <div style={{ marginBottom: '0.5rem' }}>
-            <Truck size={18} color="var(--color-success)" />
-          </div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{stats.delivered}</div>
-          <div style={{ color: 'var(--color-text-muted)', fontSize: '0.6875rem' }}>Livrées</div>
-        </div>
-
-        <div className="kpi-card">
-          <div style={{ marginBottom: '0.5rem' }}>
-            <Clock size={18} color="var(--color-warning)" />
-          </div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{stats.pending}</div>
-          <div style={{ color: 'var(--color-text-muted)', fontSize: '0.6875rem' }}>En attente</div>
-        </div>
-
-        <div className="kpi-card">
-          <div style={{ marginBottom: '0.5rem' }}>
-            <DollarSign size={18} color="var(--color-success)" />
+            <TrendingUp size={18} color="var(--color-success)" />
           </div>
           <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{stats.revenue.toLocaleString()}</div>
-          <div style={{ color: 'var(--color-text-muted)', fontSize: '0.6875rem' }}>MRU</div>
+          <div style={{ color: 'var(--color-text-muted)', fontSize: '0.6875rem' }}>CA Brut</div>
+        </div>
+
+        <div style={{ 
+          background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(30, 41, 59, 0.4))',
+          borderRadius: 16, border: '1px solid rgba(51, 65, 85, 0.5)', padding: '1.25rem'
+        }}>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <Truck size={18} color="var(--color-warning)" />
+          </div>
+          <div style={{ fontSize: '1.125rem', fontWeight: 700 }}>
+            {orders
+              .filter(o => o.cycleId === activeCycle?.id && o.reachedDelivery)
+              .reduce((sum, o) => sum + o.deliveryCost, 0)
+              .toLocaleString()}
+          </div>
+          <div style={{ color: 'var(--color-text-muted)', fontSize: '0.6875rem' }}>Frais Livreurs</div>
+        </div>
+
+        <div className="kpi-card">
+          <div style={{ marginBottom: '0.5rem' }}>
+            <DollarSign size={18} color="var(--color-primary-light)" />
+          </div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>
+            {(stats.revenue - orders
+              .filter(o => o.cycleId === activeCycle?.id && o.reachedDelivery)
+              .reduce((sum, o) => sum + o.deliveryCost, 0)).toLocaleString()}
+          </div>
+          <div style={{ color: 'var(--color-text-muted)', fontSize: '0.6875rem' }}>Bénéfice Net</div>
         </div>
       </div>
 

@@ -52,12 +52,13 @@ export const generateDistributorReport = async (
         if (finishedOrders.length > 0) {
             autoTable(doc, {
                 startY: finalY,
-                head: [['N°', 'Client', 'Quantité', 'Prix Total', 'Status', 'Date']],
+                head: [['N°', 'Client', 'Zone', 'Quantité', 'Prix Total', 'Status', 'Date']],
                 body: finishedOrders.map((o, index) => [
                     index + 1,
                     o.clientName,
+                    o.deliveryZone,
                     o.quantity,
-                    `${(o.price * o.quantity + o.deliveryCost).toFixed(2)} MRU`,
+                    `${(o.price * o.quantity).toFixed(2)} MRU`,
                     STATUS_LABELS[o.status],
                     new Date(o.createdAt).toLocaleDateString('fr-FR')
                 ]),
@@ -79,10 +80,11 @@ export const generateDistributorReport = async (
         if (transferableOrders.length > 0) {
             autoTable(doc, {
                 startY: finalY,
-                head: [['N°', 'Client', 'Quantité', 'Status', 'Date Originale']],
+                head: [['N°', 'Client', 'Zone', 'Quantité', 'Status', 'Date Originale']],
                 body: transferableOrders.map((o, index) => [
                     index + 1,
                     o.clientName,
+                    o.deliveryZone,
                     o.quantity,
                     STATUS_LABELS[o.status],
                     new Date(o.createdAt).toLocaleDateString('fr-FR')
@@ -99,15 +101,19 @@ export const generateDistributorReport = async (
         }
 
         // 4. Résumé Financier
-        const totalNet = finishedOrders.reduce((sum, o) => sum + (o.price * o.quantity), 0);
-        addSectionTitle('Résumé Financier', 10);
+        const paidOrders = orders.filter(o => o.status === 'TERMINEE' || o.status === 'PAYEE');
+        const grossRevenue = paidOrders.reduce((sum, o) => sum + (o.price * o.quantity), 0);
+        const deliveryCosts = orders.reduce((sum, o) => sum + (o.reachedDelivery ? o.deliveryCost : 0), 0);
+        const netRevenue = grossRevenue - deliveryCosts;
+
+        addSectionTitle('Résumé Financier du Cycle', 10);
         autoTable(doc, {
             startY: finalY,
             head: [['Description', 'Valeur']],
             body: [
-                ['Total Revenu Net (Produits)', `${totalNet.toFixed(2)} MRU`],
-                ['Total Commandes Terminées', finishedOrders.length.toString()],
-                ['Total Commandes Transférables', transferableOrders.length.toString()],
+                ["Chiffre d'Affaires Brut", `${grossRevenue.toLocaleString()} MRU`],
+                ['Total Frais Livreurs', `${deliveryCosts.toLocaleString()} MRU`],
+                ['Bénéfice Net Final', `${netRevenue.toLocaleString()} MRU`],
             ],
             theme: 'striped',
             headStyles: { fillColor: [52, 73, 94] },

@@ -15,42 +15,48 @@ export default function ReportPage() {
     const today = new Date();
     const dateStr = format(today, 'd MMMM yyyy', { locale: fr });
 
-    // Completed today: closedAt = today AND status is PAYEE or ANNULEE or TERMINEE
-    const completedToday = orders.filter((o) => {
-      if (!o.closedAt) return false;
-      try { return isToday(parseISO(o.closedAt)) && (o.status === 'PAYEE' || o.status === 'ANNULEE' || o.status === 'TERMINEE'); } catch { return false; }
-    });
-    const paid = completedToday.filter((o) => o.status === 'PAYEE' || o.status === 'TERMINEE');
-    const cancelled = completedToday.filter((o) => o.status === 'ANNULEE');
-
-    // In progress: not closed
-    const inProgress = orders.filter((o) =>
-      o.status === 'DEMANDE_RECUE' || o.status === 'CONFIRMEE' || o.status === 'ENVOYEE_LIVREUR' || o.status === 'PARTIELLE'
+    // Orders for current cycle (or all if no active cycle, but usually current cycle)
+    const cycleOrders = activeCycle ? orders.filter(o => o.cycleId === activeCycle.id) : orders;
+    
+    const paid = cycleOrders.filter((o) => o.status === 'PAYEE' || o.status === 'TERMINEE');
+    const cancelled = cycleOrders.filter((o) => o.status === 'ANNULEE');
+    const inProgress = cycleOrders.filter((o) =>
+      o.status !== 'PAYEE' && o.status !== 'TERMINEE' && o.status !== 'ANNULEE'
     );
 
     // Financials
-    const totalSales = paid.reduce((sum, o) => sum + (o.price * o.quantity), 0);
-    const totalDelivery = paid.reduce((sum, o) => sum + o.deliveryCost, 0);
-    const netRevenue = totalSales; // Assuming price is net for distributor
+    // Revenu Brut = Sum(price * quantity) of PAID orders
+    const grossRevenue = paid.reduce((sum, o) => sum + (o.price * o.quantity), 0);
+    
+    // Frais Livreurs totaux = Sum(deliveryCost) of all orders that reached 'ENVOYEE_LIVREUR' 
+    // (even if cancelled later, as per rule #3)
+    const totalDeliveryCosts = cycleOrders.reduce((sum, o) => {
+        return sum + (o.reachedDelivery ? o.deliveryCost : 0);
+    }, 0);
 
-    return { dateStr, paid, cancelled, inProgress, completedToday, totalSales, totalDelivery, netRevenue };
-  }, [orders]);
+    // Revenu Net = Gross Revenue - Total Delivery Costs
+    const netRevenue = grossRevenue - totalDeliveryCosts;
+
+    return { dateStr, paid, cancelled, inProgress, cycleOrders, grossRevenue, totalDeliveryCosts, netRevenue };
+  }, [orders, activeCycle]);
 
   const generateText = () => {
-    let text = `📊 Rapport du ${report.dateStr}\n\n`;
-    text += `✅ Commandes terminées : ${report.paid.length}\n`;
-    text += `❌ Commandes annulées : ${report.cancelled.length}\n`;
-    text += `⏳ Commandes en cours : ${report.inProgress.length}\n\n`;
-    text += `💰 Total ventes : ${report.totalSales.toLocaleString()} MRU\n`;
-    text += `🚚 Total livraison : ${report.totalDelivery.toLocaleString()} MRU\n`;
-    text += `📈 Revenu net : ${report.netRevenue.toLocaleString()} MRU\n`;
+    let text = `📊 *Rapport de Vente - Distributeur*\n`;
+    text += `📅 Date : ${report.dateStr}\n`;
+    if (activeCycle) text += `🔄 Cycle #${activeCycle.id}\n`;
+    text += `\n--------------------------\n`;
+    text += `📦 Commandes Terminées : ${report.paid.length}\n`;
+    text += `❌ Commandes Annulées : ${report.cancelled.length}\n`;
+    text += `⏳ Commandes en Cours : ${report.inProgress.length}\n`;
+    text += `\n--------------------------\n`;
+    text += `💰 *Revenu Brut :* ${report.grossRevenue.toLocaleString()} MRU\n`;
+    text += `🚚 *Frais Livraison :* ${report.totalDeliveryCosts.toLocaleString()} MRU\n`;
+    text += `📈 *Revenu Net :* ${report.netRevenue.toLocaleString()} MRU\n`;
 
     if (report.inProgress.length > 0) {
-      text += `\n⏳ Commandes en cours :\n`;
+      text += `\n⚠️ *Commandes en cours :*\n`;
       report.inProgress.forEach((o) => {
-        let d = '';
-        try { d = format(parseISO(o.createdAt), 'd MMM', { locale: fr }); } catch {}
-        text += `• ${o.clientName} (${d}) - ${STATUS_LABELS[o.status]}\n`;
+        text += `• ${o.clientName} - ${STATUS_LABELS[o.status]}\n`;
       });
     }
     return text;
@@ -112,24 +118,38 @@ export default function ReportPage() {
       </div>
 
       {/* Financial summary */}
-      <div className="glass-card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+      <div className="glass-card" style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
           <DollarSign size={16} color="var(--color-primary-light)" />
-          <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>Résumé financier</span>
+          <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>Résumé financier du cycle</span>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
-            <span style={{ color: 'var(--color-text-muted)' }}>Total ventes</span>
-            <span style={{ fontWeight: 600 }}>{report.totalSales.toLocaleString()} MRU</span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
+          <div style={{ textAlign: 'center', padding: '0.5rem', borderRadius: 12, background: 'rgba(255,255,255,0.03)' }}>
+            <div style={{ color: 'var(--color-text-muted)', fontSize: '0.625rem', marginBottom: '0.25rem' }}>CA BRUT</div>
+            <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--color-success)' }}>{report.grossRevenue.toLocaleString()}</div>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
-            <span style={{ color: 'var(--color-text-muted)' }}>Total livraison</span>
-            <span style={{ fontWeight: 600, color: 'var(--color-warning)' }}>-{report.totalDelivery.toLocaleString()} MRU</span>
+          <div style={{ textAlign: 'center', padding: '0.5rem', borderRadius: 12, background: 'rgba(255,255,255,0.03)' }}>
+            <div style={{ color: 'var(--color-text-muted)', fontSize: '0.625rem', marginBottom: '0.25rem' }}>FRAIS LIVREURS</div>
+            <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--color-warning)' }}>{report.totalDeliveryCosts.toLocaleString()}</div>
           </div>
-          <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '0.625rem', display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ fontWeight: 600 }}>Revenu net</span>
-            <span style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--color-success)' }}>{report.netRevenue.toLocaleString()} MRU</span>
+          <div style={{ textAlign: 'center', padding: '0.5rem', borderRadius: 12, background: 'rgba(255,255,255,0.03)' }}>
+            <div style={{ color: 'var(--color-text-muted)', fontSize: '0.625rem', marginBottom: '0.25rem' }}>BÉNÉFICE NET</div>
+            <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--color-primary-light)' }}>{report.netRevenue.toLocaleString()}</div>
           </div>
+        </div>
+      </div>
+
+      <div className="glass-card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
+        <h2 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Share2 size={18} /> Partager le Rapport
+        </h2>
+        
+        <div style={{ 
+          background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '12px', 
+          fontSize: '0.875rem', marginBottom: '1rem', whiteSpace: 'pre-wrap',
+          border: '1px solid var(--color-border)', color: 'var(--color-text-muted)'
+        }}>
+          {generateText()}
         </div>
       </div>
 

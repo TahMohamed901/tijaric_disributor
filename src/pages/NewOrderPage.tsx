@@ -5,8 +5,14 @@ import { ShoppingCart, Check, AlertTriangle } from 'lucide-react';
 import type { DeliveryZone, PaymentMethod } from '../lib/db';
 import toast from 'react-hot-toast';
 
+const MAURITANIA_REGIONS = [
+  'Hodh Ech Chargui', 'Hodh El Gharbi', 'Assaba', 'Gorgol', 'Brakna', 'Trarza', 
+  'Adrar', 'Dakhlet Nouadhibou', 'Tagant', 'Guidimaka', 'Tiris Zemmour', 
+  'Inchiri', 'Nouakchott Nord', 'Nouakchott Ouest', 'Nouakchott Sud'
+];
+
 export default function NewOrderPage() {
-  const { addOrder, activeCycle } = useDistributorStore();
+  const { addOrder, activeCycle, settings } = useDistributorStore();
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
@@ -14,16 +20,15 @@ export default function NewOrderPage() {
     clientPhone: '',
     address: '',
     quantity: '',
-    price: '',
-    deliveryCost: '',
     deliveryZone: 'Nouakchott' as DeliveryZone,
-    paymentMethod: 'Cash' as PaymentMethod,
+    paymentMethod: 'À la livraison' as PaymentMethod,
   });
 
-  const [stockPrompt, setStockPrompt] = useState<{ msg: string; remaining: number } | null>(null);
+  const unitPrice = settings?.unitPrice || 0;
+  const totalPrice = Number(form.quantity) * unitPrice;
 
-  const handleSubmit = async (forcePartial = false) => {
-    if (!form.clientName || !form.clientPhone || !form.quantity || !form.price) {
+  const handleSubmit = async () => {
+    if (!form.clientName || !form.clientPhone || !form.quantity) {
       toast.error('Veuillez remplir tous les champs obligatoires');
       return;
     }
@@ -33,26 +38,29 @@ export default function NewOrderPage() {
       return;
     }
 
+    if (Number(form.quantity) > activeCycle.remainingStock) {
+        toast.error(`Stock insuffisant. Stock disponible : ${activeCycle.remainingStock}`);
+        return;
+    }
+
     const res = await addOrder({
       clientName: form.clientName,
       clientPhone: form.clientPhone,
       address: form.address,
       quantity: Number(form.quantity),
-      price: Number(form.price),
-      deliveryCost: Number(form.deliveryCost) || 0,
+      price: unitPrice, // Save current unit price for history
+      deliveryCost: 0,
       deliveryZone: form.deliveryZone,
       paymentMethod: form.paymentMethod,
       status: 'DEMANDE_RECUE',
       createdAt: new Date().toISOString(),
       closedAt: null,
-      transferable: false, // Default, updated in store if partial
-    }, forcePartial);
+      transferable: false,
+    });
 
     if (res.success) {
       toast.success('Commande enregistrée !');
       navigate('/orders');
-    } else if (res.remaining !== undefined) {
-      setStockPrompt({ msg: res.msg!, remaining: res.remaining });
     } else {
       toast.error(res.msg || 'Erreur lors de l\'enregistrement');
     }
@@ -64,7 +72,7 @@ export default function NewOrderPage() {
         <div>
           <h1 className="page-title">Nouvelle commande</h1>
           <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-            Enregistrer une commande WhatsApp
+            Enregistrer une commande
           </p>
         </div>
         <div style={{
@@ -118,14 +126,70 @@ export default function NewOrderPage() {
             Détails commande
           </div>
 
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <div>
+              <label className="form-label">Zone de livraison</label>
+              <div style={{ display: 'flex', background: 'var(--color-bg)', borderRadius: 10, padding: 4 }}>
+                  <button 
+                  onClick={() => setForm({ ...form, deliveryZone: 'Nouakchott' })}
+                  style={{ 
+                      flex: 1, padding: '0.5rem', borderRadius: 8, fontSize: '0.75rem', fontWeight: 600,
+                      background: form.deliveryZone === 'Nouakchott' ? 'var(--color-primary)' : 'transparent',
+                      color: form.deliveryZone === 'Nouakchott' ? 'white' : 'var(--color-text-muted)',
+                      border: 'none', transition: 'all 0.2s'
+                  }}>Nouakchott</button>
+                  <button 
+                  onClick={() => setForm({ ...form, deliveryZone: 'Wilaya' })}
+                  style={{ 
+                      flex: 1, padding: '0.5rem', borderRadius: 8, fontSize: '0.75rem', fontWeight: 600,
+                      background: form.deliveryZone === 'Wilaya' ? 'var(--color-primary)' : 'transparent',
+                      color: form.deliveryZone === 'Wilaya' ? 'white' : 'var(--color-text-muted)',
+                      border: 'none', transition: 'all 0.2s'
+                  }}>Wilaya</button>
+              </div>
+            </div>
+            <div>
+              <label className="form-label">Paiement</label>
+              <div style={{ display: 'flex', background: 'var(--color-bg)', borderRadius: 10, padding: 4 }}>
+                  <button 
+                  onClick={() => setForm({ ...form, paymentMethod: 'Prépayé' })}
+                  style={{ 
+                      flex: 1, padding: '0.5rem', borderRadius: 8, fontSize: '0.75rem', fontWeight: 600,
+                      background: form.paymentMethod === 'Prépayé' ? 'var(--color-success)' : 'transparent',
+                      color: form.paymentMethod === 'Prépayé' ? 'white' : 'var(--color-text-muted)',
+                      border: 'none', transition: 'all 0.2s'
+                  }}>Prépayé</button>
+                  <button 
+                  onClick={() => setForm({ ...form, paymentMethod: 'À la livraison' })}
+                  style={{ 
+                      flex: 1, padding: '0.5rem', borderRadius: 8, fontSize: '0.75rem', fontWeight: 600,
+                      background: form.paymentMethod === 'À la livraison' ? 'var(--color-success)' : 'transparent',
+                      color: form.paymentMethod === 'À la livraison' ? 'white' : 'var(--color-text-muted)',
+                      border: 'none', transition: 'all 0.2s'
+                  }}>Livraison</button>
+              </div>
+            </div>
+          </div>
+
           <div>
-            <label className="form-label">Adresse de livraison</label>
-            <input
-              className="form-input"
-              placeholder="Adresse complète"
-              value={form.address}
-              onChange={(e) => setForm({ ...form, address: e.target.value })}
-            />
+            <label className="form-label">{form.deliveryZone === 'Wilaya' ? 'Sélectionner la Wilaya' : 'Adresse de livraison'}</label>
+            {form.deliveryZone === 'Wilaya' ? (
+              <select 
+                className="form-select"
+                value={form.address}
+                onChange={(e) => setForm({ ...form, address: e.target.value })}
+              >
+                <option value="">Sélectionner...</option>
+                {MAURITANIA_REGIONS.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+            ) : (
+              <input
+                className="form-input"
+                placeholder="Adresse complète"
+                value={form.address}
+                onChange={(e) => setForm({ ...form, address: e.target.value })}
+              />
+            )}
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
@@ -138,102 +202,51 @@ export default function NewOrderPage() {
                 value={form.quantity}
                 onChange={(e) => setForm({ ...form, quantity: e.target.value })}
               />
+              {activeCycle && (
+                  <div style={{ fontSize: '0.625rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
+                      Stock disponible: {activeCycle.remainingStock}
+                  </div>
+              )}
             </div>
             <div>
-              <label className="form-label">Prix unitaire (MRU) *</label>
-              <input
-                className="form-input"
-                type="number"
-                placeholder="0"
-                value={form.price}
-                onChange={(e) => setForm({ ...form, price: e.target.value })}
-              />
+              <label className="form-label">Prix (Fixe)</label>
+              <div style={{ 
+                height: '42px', display: 'flex', alignItems: 'center', 
+                padding: '0 1rem', background: 'rgba(255,255,255,0.03)', 
+                borderRadius: 12, border: '1px solid var(--color-border)',
+                fontWeight: 600, color: 'var(--color-primary-light)'
+              }}>
+                {unitPrice} MRU
+              </div>
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-            <div>
-              <label className="form-label">Zone de livraison</label>
-              <select
-                className="form-select"
-                value={form.deliveryZone}
-                onChange={(e) => setForm({ ...form, deliveryZone: e.target.value as DeliveryZone })}
-              >
-                <option value="Nouakchott">Nouakchott</option>
-                <option value="Wilaya">Wilaya</option>
-              </select>
-            </div>
-            <div>
-              <label className="form-label">Paiement</label>
-              <select
-                className="form-select"
-                value={form.paymentMethod}
-                onChange={(e) => setForm({ ...form, paymentMethod: e.target.value as PaymentMethod })}
-              >
-                <option value="Cash">Cash</option>
-                <option value="Bankily">Bankily</option>
-                <option value="Masrivi">Masrivi</option>
-                <option value="Sedad">Sedad</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="form-label">Coût de livraison (MRU)</label>
-            <input
-              className="form-input"
-              type="number"
-              placeholder="0"
-              value={form.deliveryCost}
-              onChange={(e) => setForm({ ...form, deliveryCost: e.target.value })}
-            />
+          <div style={{ 
+              padding: '1rem', background: 'rgba(20, 184, 166, 0.05)', 
+              borderRadius: 12, border: '1px dashed var(--color-primary-light)',
+              display: 'flex', flexDirection: 'column', gap: '0.25rem'
+          }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Montant Total Produit</span>
+                  <span style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--color-primary-light)' }}>
+                      {totalPrice.toLocaleString()} MRU
+                  </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--color-success)' }}>Livraison</span>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-success)' }}>OFFERTE</span>
+              </div>
           </div>
 
           <button
             className="btn-primary"
-            onClick={() => handleSubmit(false)}
+            onClick={handleSubmit}
             style={{ width: '100%', justifyContent: 'center', padding: '0.875rem', marginTop: '0.5rem' }}
           >
             <Check size={16} /> Enregistrer la commande
           </button>
         </div>
       </div>
-
-      {/* Stock Prompt Modal */}
-      {stockPrompt && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
-          background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: '1.5rem', zIndex: 100
-        }}>
-          <div className="glass-card" style={{ width: '100%', maxWidth: 400, padding: '1.5rem', textAlign: 'center' }}>
-            <div style={{ color: 'var(--color-warning)', marginBottom: '1rem' }}>
-              <AlertTriangle size={48} style={{ margin: '0 auto' }} />
-            </div>
-            <h3 style={{ marginBottom: '1rem' }}>Stock insuffisant</h3>
-            <p style={{ color: 'var(--color-text-muted)', marginBottom: '1.5rem' }}>
-              Il n'y a que <strong>{stockPrompt.remaining}</strong> produits disponibles. 
-              Voulez-vous enregistrer une commande pour ce stock partiel ?
-            </p>
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <button 
-                className="btn-secondary" 
-                style={{ flex: 1 }} 
-                onClick={() => setStockPrompt(null)}
-              >
-                Refuser / Annuler
-              </button>
-              <button 
-                className="btn-primary" 
-                style={{ flex: 1 }} 
-                onClick={() => handleSubmit(true)}
-              >
-                Accepter ({stockPrompt.remaining})
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

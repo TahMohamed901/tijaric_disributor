@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { db, type StockItem, type Order, type Delivery, type OrderStatus, type Cycle } from '../lib/db';
+import { db, type StockItem, type Order, type Delivery, type OrderStatus, type Cycle, type Settings } from '../lib/db';
 
 interface DistributorStore {
     stockItems: StockItem[];
@@ -7,6 +7,7 @@ interface DistributorStore {
     deliveries: Delivery[];
     cycles: Cycle[];
     activeCycle: Cycle | null;
+    settings: Settings | null;
     loading: boolean;
 
     loadAll: () => Promise<void>;
@@ -21,11 +22,16 @@ interface DistributorStore {
     deleteStock: (id: number) => Promise<void>;
 
     // Orders
-    addOrder: (o: Omit<Order, 'id' | 'cycleId'>, forcePartial?: boolean) => Promise<{ success: boolean; msg?: string; remaining?: number }>;
+    addOrder: (o: Omit<Order, 'id' | 'cycleId'>) => Promise<{ success: boolean; msg?: string; remaining?: number }>;
     updateOrderStatus: (id: number, status: OrderStatus) => Promise<void>;
 
+    // Settings
+    updateSettings: (s: Settings) => Promise<void>;
+
     // Deliveries
-    addDelivery: (d: Omit<Delivery, 'id'>) => Promise<void>;
+    addDelivery: (d: Omit<Delivery, 'id'>, deliveryCost: number) => Promise<void>;
+    // Logic helper
+    recalculateStock: () => Promise<void>;
 }
 
 export const useDistributorStore = create<DistributorStore>((set, get) => ({
@@ -34,17 +40,56 @@ export const useDistributorStore = create<DistributorStore>((set, get) => ({
     deliveries: [],
     cycles: [],
     activeCycle: null,
+    settings: null,
     loading: true,
 
     loadAll: async () => {
-        const [stockItems, orders, deliveries, cycles] = await Promise.all([
+        const [stockItems, orders, deliveries, cycles, settingsArr] = await Promise.all([
             db.stock.toArray(),
             db.orders.toArray(),
             db.deliveries.toArray(),
             db.cycles.toArray(),
+            db.settings.toArray(),
         ]);
+        
+        let settings = settingsArr[0] || null;
+        if (!settings) {
+            settings = { distributorName: 'Distributeur Ibrahim', productName: 'Sacs de Riz', unitPrice: 500 };
+            const id = await db.settings.add(settings);
+            settings.id = id;
+        }
+
         const activeCycle = cycles.find(c => c.status === 'ACTIVE') || null;
-        set({ stockItems, orders, deliveries, cycles, activeCycle, loading: false });
+        set({ stockItems, orders, deliveries, cycles, activeCycle, settings, loading: false });
+        if (activeCycle) {
+            await get().recalculateStock();
+        }
+    },
+    
+    updateSettings: async (s) => {
+        if (s.id) {
+            await db.settings.put(s);
+        } else {
+            const id = await db.settings.add(s);
+            s.id = id;
+        }
+        set({ settings: s });
+    },
+
+    recalculateStock: async () => {
+        const { activeCycle, orders } = get();
+        if (!activeCycle || !activeCycle.id) return;
+
+        const cycleOrders = orders.filter(o => o.cycleId === activeCycle.id && o.status !== 'ANNULEE');
+        const usedQuantity = cycleOrders.reduce((sum, o) => sum + o.quantity, 0);
+        const remainingStock = activeCycle.initialStock - usedQuantity;
+
+        if (remainingStock !== activeCycle.remainingStock) {
+            await db.cycles.update(activeCycle.id, { remainingStock });
+            set((state) => ({
+                activeCycle: state.activeCycle ? { ...state.activeCycle, remainingStock } : null
+            }));
+        }
     },
 
     startCycle: async (initialStock) => {
@@ -70,8 +115,7 @@ export const useDistributorStore = create<DistributorStore>((set, get) => ({
     },
 
     resetCycle: async () => {
-        // Supprimer uniquement les commandes terminées / non transférables
-        const ordersToDelete = get().orders.filter(o => o.status === 'TERMINEE' && !o.transferable);
+        const ordersToDelete = get().orders.filter(o => (o.status === 'TERMINEE' || o.status === 'PAYEE' || o.status === 'ANNULEE') && !o.transferable);
         for (const order of ordersToDelete) {
             if (order.id) await db.orders.delete(order.id);
         }
@@ -81,80 +125,63 @@ export const useDistributorStore = create<DistributorStore>((set, get) => ({
     addStock: async (s) => {
         const { activeCycle } = get();
         await db.stock.add({ ...s, cycleId: activeCycle?.id });
-        if (activeCycle && activeCycle.id) {
-            await db.cycles.update(activeCycle.id, {
-                remainingStock: activeCycle.remainingStock + s.quantity,
-            });
-        }
         await get().loadAll();
+        await get().recalculateStock();
     },
 
     deleteStock: async (id) => {
-        const item = await db.stock.get(id);
         await db.stock.delete(id);
-        const { activeCycle } = get();
-        if (item && activeCycle && activeCycle.id) {
-            await db.cycles.update(activeCycle.id, {
-                remainingStock: Math.max(0, activeCycle.remainingStock - item.quantity),
-            });
-        }
         await get().loadAll();
+        await get().recalculateStock();
     },
 
-    addOrder: async (o, forcePartial = false) => {
+    addOrder: async (o) => {
         const { activeCycle } = get();
         if (!activeCycle) return { success: false, msg: 'Aucun cycle actif' };
 
-        let finalQuantity = o.quantity;
-        let isPartial = false;
-
         if (o.quantity > activeCycle.remainingStock) {
-            if (!forcePartial) {
-                return { 
-                    success: false, 
-                    msg: `Stock insuffisant. Stock restant : ${activeCycle.remainingStock}. Voulez-vous commander ce stock partiel ?`,
-                    remaining: activeCycle.remainingStock
-                };
-            }
-            finalQuantity = activeCycle.remainingStock;
-            isPartial = true;
+            return { 
+                success: false, 
+                msg: `Stock insuffisant. Stock disponible : ${activeCycle.remainingStock}.`,
+                remaining: activeCycle.remainingStock
+            };
         }
 
         const newOrder: Order = {
             ...o,
-            quantity: finalQuantity,
             cycleId: activeCycle.id!,
-            status: isPartial ? 'PARTIELLE' : o.status,
-            transferable: isPartial,
             createdAt: o.createdAt || new Date().toISOString(),
+            reachedDelivery: o.status === 'ENVOYEE_LIVREUR'
         };
 
         await db.orders.add(newOrder);
-        
-        await db.cycles.update(activeCycle.id!, {
-            remainingStock: activeCycle.remainingStock - finalQuantity
-        });
-
         await get().loadAll();
+        await get().recalculateStock();
         return { success: true };
     },
 
     updateOrderStatus: async (id, status) => {
+        const order = get().orders.find(o => o.id === id);
+        if (!order) return;
+
         const update: Partial<Order> = { status };
+        
         if (status === 'PAYEE' || status === 'ANNULEE' || status === 'TERMINEE') {
             update.closedAt = new Date().toISOString();
         }
 
-        if (status === 'TERMINEE') {
-            update.transferable = false;
+        if (status === 'ENVOYEE_LIVREUR') {
+            update.reachedDelivery = true;
         }
 
         await db.orders.update(id, update);
         await get().loadAll();
+        await get().recalculateStock();
     },
 
-    addDelivery: async (d) => {
+    addDelivery: async (d: Omit<Delivery, 'id'>, deliveryCost: number) => {
         await db.deliveries.add(d);
+        await db.orders.update(d.orderId, { deliveryCost, reachedDelivery: true });
         await get().loadAll();
     },
 }));

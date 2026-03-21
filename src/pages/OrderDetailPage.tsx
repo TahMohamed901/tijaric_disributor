@@ -12,7 +12,7 @@ export default function OrderDetailPage() {
   const navigate = useNavigate();
   const { orders, deliveries, updateOrderStatus, addDelivery } = useDistributorStore();
   const [showDeliveryModal, setShowDeliveryModal] = useState(false);
-  const [deliveryForm, setDeliveryForm] = useState({ deliveryName: '', deliveryPhone: '' });
+  const [deliveryForm, setDeliveryForm] = useState({ deliveryName: '', deliveryPhone: '', deliveryCost: '' });
 
   const order = useMemo(() => orders.find((o) => o.id === Number(id)), [orders, id]);
   const delivery = useMemo(() => deliveries.find((d) => d.orderId === Number(id)), [deliveries, id]);
@@ -43,11 +43,18 @@ export default function OrderDetailPage() {
   };
 
   const handleDeliverySubmit = async () => {
-    if (!deliveryForm.deliveryName || !deliveryForm.deliveryPhone) return;
-    await addDelivery({ orderId: order.id!, deliveryName: deliveryForm.deliveryName, deliveryPhone: deliveryForm.deliveryPhone });
+    if (!deliveryForm.deliveryName || !deliveryForm.deliveryPhone || !deliveryForm.deliveryCost) {
+        toast.error('Veuillez remplir tous les champs (Nom, Tél, Frais)');
+        return;
+    }
+    await addDelivery({ 
+        orderId: order.id!, 
+        deliveryName: deliveryForm.deliveryName, 
+        deliveryPhone: deliveryForm.deliveryPhone
+    }, Number(deliveryForm.deliveryCost));
     await updateOrderStatus(order.id!, 'ENVOYEE_LIVREUR');
     setShowDeliveryModal(false);
-    toast.success('Livreur assigné');
+    toast.success('Livreur assigné et commande envoyée');
   };
 
   let displayDate = order.createdAt;
@@ -111,21 +118,25 @@ export default function OrderDetailPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', textAlign: 'center' }}>
           <div><div style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>Quantité</div><div style={{ fontSize: '1.125rem', fontWeight: 700 }}>{order.quantity}</div></div>
           <div><div style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>Prix Unitaire</div><div style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--color-primary-light)' }}>{order.price.toLocaleString()} MRU</div></div>
-          <div><div style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>Livraison</div><div style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--color-warning)' }}>{order.deliveryCost.toLocaleString()} MRU</div></div>
+          <div><div style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>Livraison</div><div style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-success)', marginTop: '0.125rem' }}>OFFERTE</div></div>
         </div>
         <div style={{ marginTop: '0.875rem', paddingTop: '0.875rem', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>Total à payer</span>
-          <span style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--color-success)' }}>{(order.price * order.quantity + order.deliveryCost).toLocaleString()} MRU</span>
+          <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>Total à payer par le client</span>
+          <span style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--color-success)' }}>{(order.price * order.quantity).toLocaleString()} MRU</span>
         </div>
       </div>
 
       {/* Delivery info */}
       {delivery && (
-        <div className="glass-card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}><Truck size={16} color="var(--color-primary-light)" /><span style={{ fontWeight: 600, fontSize: '0.875rem' }}>Livreur</span></div>
-          <div style={{ display: 'flex', gap: '1.5rem' }}>
-            <div><div style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>Nom</div><div style={{ fontWeight: 500 }}>{delivery.deliveryName}</div></div>
-            <div><div style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>Tél</div><div style={{ fontWeight: 500 }}>{delivery.deliveryPhone}</div></div>
+        <div className="glass-card" style={{ padding: '1.25rem', marginBottom: '1rem', border: '1px solid rgba(6, 182, 212, 0.2)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <Truck size={16} color="var(--color-accent)" />
+            <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>Expédition (Frais Distributeur)</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+            <div><div style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>Livreur</div><div style={{ fontWeight: 500, fontSize: '0.875rem' }}>{delivery.deliveryName}</div></div>
+            <div><div style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>Téléphone</div><div style={{ fontWeight: 500, fontSize: '0.875rem' }}>{delivery.deliveryPhone}</div></div>
+            <div><div style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>Frais Payés</div><div style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-warning)' }}>{order.deliveryCost.toLocaleString()} MRU</div></div>
           </div>
         </div>
       )}
@@ -163,13 +174,14 @@ export default function OrderDetailPage() {
         <div className="modal-overlay" onClick={() => setShowDeliveryModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div style={{ padding: '1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
-              <h2 style={{ fontWeight: 600 }}>Informations livreur</h2>
+              <h2 style={{ fontWeight: 600 }}>Informations expédition</h2>
               <button onClick={() => setShowDeliveryModal(false)} style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer' }}><XIcon size={20} /></button>
             </div>
             <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div><label className="form-label">Nom *</label><input className="form-input" value={deliveryForm.deliveryName} onChange={(e) => setDeliveryForm({ ...deliveryForm, deliveryName: e.target.value })} /></div>
-              <div><label className="form-label">Téléphone *</label><input className="form-input" type="tel" value={deliveryForm.deliveryPhone} onChange={(e) => setDeliveryForm({ ...deliveryForm, deliveryPhone: e.target.value })} /></div>
-              <button className="btn-primary" onClick={handleDeliverySubmit} style={{ width: '100%', justifyContent: 'center', padding: '0.875rem' }}><Truck size={16} /> Envoyer</button>
+              <div><label className="form-label">Nom du Livreur *</label><input className="form-input" placeholder="ex: Brahim" value={deliveryForm.deliveryName} onChange={(e) => setDeliveryForm({ ...deliveryForm, deliveryName: e.target.value })} /></div>
+              <div><label className="form-label">Téléphone Livreur *</label><input className="form-input" type="tel" placeholder="ex: 44123456" value={deliveryForm.deliveryPhone} onChange={(e) => setDeliveryForm({ ...deliveryForm, deliveryPhone: e.target.value })} /></div>
+              <div><label className="form-label">Frais de livraison (à votre charge) *</label><input className="form-input" type="number" placeholder="ex: 100" value={deliveryForm.deliveryCost} onChange={(e) => setDeliveryForm({ ...deliveryForm, deliveryCost: e.target.value })} /></div>
+              <button className="btn-primary" onClick={handleDeliverySubmit} style={{ width: '100%', justifyContent: 'center', padding: '0.875rem', marginTop: '0.5rem' }}><Truck size={16} /> Confirmer l'envoi</button>
             </div>
           </div>
         </div>
@@ -178,7 +190,7 @@ export default function OrderDetailPage() {
   );
 }
 
-function DetailRow({ icon, label, value, isPhone }: { icon: React.ReactNode; label: string; value: string; isPhone?: boolean }) {
+function DetailRow({ icon, label, value, isPhone }: { icon: React.ReactNode; label: string; value: string | number; isPhone?: boolean }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
       <span style={{ color: 'var(--color-text-muted)' }}>{icon}</span>

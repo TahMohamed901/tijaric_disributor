@@ -11,7 +11,7 @@ export type OrderStatus =
     | 'PARTIELLE';
 
 export type DeliveryZone = 'Nouakchott' | 'Wilaya';
-export type PaymentMethod = 'Cash' | 'Bankily' | 'Masrivi' | 'Sedad';
+export type PaymentMethod = 'Prépayé' | 'À la livraison';
 
 export interface Cycle {
     id?: number;
@@ -47,6 +47,7 @@ export interface Order {
     closedAt: string | null;
     cycleId: number;
     transferable: boolean;
+    reachedDelivery?: boolean;
 }
 
 export interface Delivery {
@@ -56,19 +57,28 @@ export interface Delivery {
     deliveryPhone: string;
 }
 
+export interface Settings {
+    id?: number;
+    distributorName: string;
+    productName: string;
+    unitPrice: number;
+}
+
 class DistributorDatabase extends Dexie {
     stock!: EntityTable<StockItem, 'id'>;
     orders!: EntityTable<Order, 'id'>;
     deliveries!: EntityTable<Delivery, 'id'>;
     cycles!: EntityTable<Cycle, 'id'>;
+    settings!: EntityTable<Settings, 'id'>;
 
     constructor() {
         super('DistributeurDB');
-        this.version(2).stores({
+        this.version(4).stores({
             stock: '++id, productName, date, cycleId',
-            orders: '++id, status, createdAt, closedAt, cycleId, transferable',
+            orders: '++id, status, createdAt, closedAt, cycleId, transferable, reachedDelivery',
             deliveries: '++id, orderId',
             cycles: '++id, status, startDate',
+            settings: '++id',
         });
     }
 }
