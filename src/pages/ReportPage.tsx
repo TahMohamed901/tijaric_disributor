@@ -8,7 +8,7 @@ import { generateDistributorReport } from '../lib/pdfService';
 import toast from 'react-hot-toast';
 
 export default function ReportPage() {
-  const { orders, activeCycle } = useDistributorStore();
+  const { orders, activeCycle, settings } = useDistributorStore();
   const [copied, setCopied] = useState(false);
 
   const report = useMemo(() => {
@@ -80,7 +80,7 @@ export default function ReportPage() {
       return;
     }
     try {
-      await generateDistributorReport('Distributeur Ibrahim', activeCycle, orders);
+      await generateDistributorReport(settings?.distributorName || "", settings?.productName || "",settings?.unitPrice || 0,activeCycle, orders);
       toast.success('PDF généré !');
     } catch (err) {
       toast.error('Erreur lors de la génération du PDF');

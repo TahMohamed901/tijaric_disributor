@@ -54,7 +54,7 @@ export const useDistributorStore = create<DistributorStore>((set, get) => ({
         
         let settings = settingsArr[0] || null;
         if (!settings) {
-            settings = { distributorName: 'Distributeur Ibrahim', productName: 'Sacs de Riz', unitPrice: 500 };
+            settings = { distributorName: 'Nom Distributeur', productName: 'Sacs de Riz', unitPrice: 500 };
             const id = await db.settings.add(settings);
             settings.id = id;
         }
