@@ -6,6 +6,7 @@ import { fr } from 'date-fns/locale';
 import { STATUS_LABELS } from '../lib/db';
 import { generateDistributorReport } from '../lib/pdfService';
 import toast from 'react-hot-toast';
+import { forceReloadFromServer } from '../lib/utils';
 
 export default function ReportPage() {
   const { orders, activeCycle, settings, deliveries } = useDistributorStore();
@@ -109,6 +110,7 @@ export default function ReportPage() {
         deliveries
       );
       toast.success('PDF généré !');
+      forceReloadFromServer()
     } catch (err) {
       toast.error('Erreur lors de la génération du PDF');
     }
