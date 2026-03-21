@@ -17,6 +17,7 @@ import OrderDetailPage from './pages/OrderDetailPage';
 import ReportPage from './pages/ReportPage';
 import ReglagesPage from './pages/ReglagesPage';
 import { Settings as SettingsIcon } from 'lucide-react';
+import CompanyHeader from './pages/CompayHeader';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Accueil' },
@@ -36,6 +37,7 @@ export default function App() {
   return (
     <div style={{ minHeight: '100vh' }}>
       <Toaster position="top-center" reverseOrder={false} />
+      <CompanyHeader />
       <Routes>
         <Route path="/" element={<DashboardPage />} />
         {/* <Route path="/stock" element={<StockPage />} /> */}

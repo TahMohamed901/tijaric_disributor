@@ -17,7 +17,7 @@ import { generateDistributorReport } from '../lib/pdfService';
 import toast from 'react-hot-toast';
 
 export default function DashboardPage() {
-  const { stockItems, orders, activeCycle, settings, loading, startCycle, closeCycle, resetCycle } = useDistributorStore();
+  const { stockItems, orders, activeCycle, settings, deliveries, loading, startCycle, closeCycle, resetCycle } = useDistributorStore();
   const [showStartModal, setShowStartModal] = useState(false);
   const [initialStockInput, setInitialStockInput] = useState('12');
 
@@ -69,7 +69,8 @@ export default function DashboardPage() {
         settings?.productName || "",
         settings?.unitPrice || 0,
         activeCycle, 
-        orders
+        orders,
+        deliveries
       );
       toast.success('Rapport généré !');
     } catch (err) {
@@ -246,17 +247,25 @@ export default function DashboardPage() {
                   <div style={{ fontWeight: 500, fontSize: '0.875rem' }}>{o.clientName}</div>
                   <div style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>
                     {o.quantity} unité{o.quantity > 1 ? 's' : ''} · {(o.price * o.quantity).toLocaleString()} MRU
+                    {o.reachedDelivery && ` · Frais: ${(o.deliveryCost || 0).toLocaleString()} MRU`}
                   </div>
                 </div>
-                <span className={`badge status-${o.status.toLowerCase()}`}>
-                  {o.status === 'DEMANDE_RECUE' ? 'Reçue' :
-                   o.status === 'CONFIRMEE' ? 'Confirmée' :
-                   o.status === 'ENVOYEE_LIVREUR' ? 'En livraison' :
-                   o.status === 'LIVREE' ? 'Livrée' :
-                   o.status === 'PAYEE' ? 'Payée' : 
-                   o.status === 'TERMINEE' ? 'Terminée' :
-                   o.status === 'PARTIELLE' ? 'Partielle' : 'Annulée'}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  {o.status === 'ANNULEE' && o.reachedDelivery && (
+                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-danger)', border: '1px solid var(--color-danger)', padding: '0.125rem 0.375rem', borderRadius: 4 }}>
+                      ⚠️ Perte
+                    </span>
+                  )}
+                  <span className={`badge status-${o.status.toLowerCase()}`}>
+                    {o.status === 'DEMANDE_RECUE' ? 'Reçue' :
+                     o.status === 'CONFIRMEE' ? 'Confirmée' :
+                     o.status === 'ENVOYEE_LIVREUR' ? 'En livraison' :
+                     o.status === 'LIVREE' ? 'Livrée' :
+                     o.status === 'PAYEE' ? 'Payée' : 
+                     o.status === 'TERMINEE' ? 'Terminée' :
+                     o.status === 'PARTIELLE' ? 'Partielle' : 'Annulée'}
+                  </span>
+                </div>
               </a>
             ))}
           </div>

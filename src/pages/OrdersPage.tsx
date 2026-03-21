@@ -109,7 +109,7 @@ export default function OrdersPage() {
                     </div>
                     <div style={{
                       color: 'var(--color-text-muted)', fontSize: '0.8125rem',
-                      marginTop: '0.25rem', display: 'flex', gap: '0.75rem'
+                      marginTop: '0.25rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap'
                     }}>
                       <span>{o.quantity} unité{o.quantity > 1 ? 's' : ''}</span>
                       <span>·</span>
@@ -118,11 +118,25 @@ export default function OrdersPage() {
                       </span>
                       <span>·</span>
                       <span>{o.deliveryZone}</span>
+                      <span>·</span>
+                      <span style={{ 
+                        color: (o.status === 'ANNULEE' && (o.deliveryCost || 0) > 0) ? 'var(--color-danger)' : 'inherit',
+                        fontWeight: (o.status === 'ANNULEE' && (o.deliveryCost || 0) > 0) ? 600 : 400
+                      }}>
+                        Frais: {(['DEMANDE_RECUE', 'CONFIRMEE'].includes(o.status)) ? '-' : `${(o.deliveryCost || 0).toLocaleString()} MRU`}
+                      </span>
                     </div>
                   </div>
-                  <span className={`badge status-${o.status.toLowerCase()}`}>
-                    {STATUS_LABELS[o.status]}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {o.status === 'ANNULEE' && o.reachedDelivery && (
+                      <span style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--color-danger)', border: '1px solid var(--color-danger)', padding: '0.125rem 0.375rem', borderRadius: 4 }}>
+                        ⚠️ Perte
+                      </span>
+                    )}
+                    <span className={`badge status-${o.status.toLowerCase()}`}>
+                      {STATUS_LABELS[o.status]}
+                    </span>
+                  </div>
                 </div>
               </div>
             );

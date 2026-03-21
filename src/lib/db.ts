@@ -20,6 +20,9 @@ export interface Cycle {
     startDate: string;
     endDate?: string;
     status: 'ACTIVE' | 'CLOSED';
+    totalRevenue?: number;
+    totalExpenses?: number;
+    netProfit?: number;
 }
 
 export interface StockItem {

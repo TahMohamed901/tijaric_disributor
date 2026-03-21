@@ -104,11 +104,25 @@ export const useDistributorStore = create<DistributorStore>((set, get) => ({
     },
 
     closeCycle: async () => {
-        const { activeCycle } = get();
+        const { activeCycle, orders } = get();
         if (activeCycle && activeCycle.id) {
+            const cycleOrders = orders.filter(o => o.cycleId === activeCycle.id);
+            const totalRevenue = cycleOrders
+                .filter(o => o.status === 'PAYEE')
+                .reduce((sum, o) => sum + (o.price * o.quantity), 0);
+            
+            const totalExpenses = cycleOrders
+                .filter(o => o.reachedDelivery)
+                .reduce((sum, o) => sum + (o.deliveryCost || 0), 0);
+            
+            const netProfit = totalRevenue - totalExpenses;
+
             await db.cycles.update(activeCycle.id, {
                 status: 'CLOSED',
                 endDate: new Date().toISOString(),
+                totalRevenue,
+                totalExpenses,
+                netProfit
             });
             await get().loadAll();
         }

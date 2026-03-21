@@ -8,55 +8,75 @@ import { generateDistributorReport } from '../lib/pdfService';
 import toast from 'react-hot-toast';
 
 export default function ReportPage() {
-  const { orders, activeCycle, settings } = useDistributorStore();
+  const { orders, activeCycle, settings, deliveries } = useDistributorStore();
   const [copied, setCopied] = useState(false);
 
   const report = useMemo(() => {
     const today = new Date();
     const dateStr = format(today, 'd MMMM yyyy', { locale: fr });
 
-    // Orders for current cycle (or all if no active cycle, but usually current cycle)
+    // Orders for current cycle
     const cycleOrders = activeCycle ? orders.filter(o => o.cycleId === activeCycle.id) : orders;
     
-    const paid = cycleOrders.filter((o) => o.status === 'PAYEE' || o.status === 'TERMINEE');
-    const cancelled = cycleOrders.filter((o) => o.status === 'ANNULEE');
+    const paid = cycleOrders.filter((o) => o.status === 'PAYEE');
+    const criticalCancellations = cycleOrders.filter((o) => o.status === 'ANNULEE' && o.reachedDelivery);
     const inProgress = cycleOrders.filter((o) =>
-      o.status !== 'PAYEE' && o.status !== 'TERMINEE' && o.status !== 'ANNULEE'
+      !['PAYEE', 'ANNULEE', 'TERMINEE'].includes(o.status)
     );
 
     // Financials
-    // Revenu Brut = Sum(price * quantity) of PAID orders
     const grossRevenue = paid.reduce((sum, o) => sum + (o.price * o.quantity), 0);
-    
-    // Frais Livreurs totaux = Sum(deliveryCost) of all orders that reached 'ENVOYEE_LIVREUR' 
-    // (even if cancelled later, as per rule #3)
-    const totalDeliveryCosts = cycleOrders.reduce((sum, o) => {
-        return sum + (o.reachedDelivery ? o.deliveryCost : 0);
-    }, 0);
-
-    // Revenu Net = Gross Revenue - Total Delivery Costs
+    const totalDeliveryCosts = cycleOrders.reduce((sum, o) => sum + (o.reachedDelivery ? (o.deliveryCost || 0) : 0), 0);
     const netRevenue = grossRevenue - totalDeliveryCosts;
 
-    return { dateStr, paid, cancelled, inProgress, cycleOrders, grossRevenue, totalDeliveryCosts, netRevenue };
+    const totalSent = cycleOrders.filter(o => o.reachedDelivery).length;
+    const failureRate = totalSent > 0 ? (criticalCancellations.length / totalSent) * 100 : 0;
+
+    return { 
+      dateStr, 
+      paid, 
+      criticalCancellations, 
+      inProgress, 
+      cycleOrders, 
+      grossRevenue, 
+      totalDeliveryCosts, 
+      netRevenue,
+      failureRate
+    };
   }, [orders, activeCycle]);
 
   const generateText = () => {
-    let text = `📊 *Rapport de Vente - Distributeur*\n`;
+    let text = `📊 *Rapport de Distribution*\n`;
     text += `📅 Date : ${report.dateStr}\n`;
     if (activeCycle) text += `🔄 Cycle #${activeCycle.id}\n`;
     text += `\n--------------------------\n`;
-    text += `📦 Commandes Terminées : ${report.paid.length}\n`;
-    text += `❌ Commandes Annulées : ${report.cancelled.length}\n`;
-    text += `⏳ Commandes en Cours : ${report.inProgress.length}\n`;
+    
+    // Résumé Global Stock
+    const totalVendu = report.paid.reduce((sum, o) => sum + o.quantity, 0);
+    const totalRetourne = report.cycleOrders.filter(o => o.status === 'ANNULEE').reduce((sum, o) => sum + o.quantity, 0);
+    
+    text += `📦 Stock Initial : ${activeCycle?.initialStock || 0}\n`;
+    text += `✅ Stock Vendu : ${totalVendu}\n`;
+    text += `❌ Stock Retourné : ${totalRetourne}\n`;
+    
     text += `\n--------------------------\n`;
-    text += `💰 *Revenu Brut :* ${report.grossRevenue.toLocaleString()} MRU\n`;
-    text += `🚚 *Frais Livraison :* ${report.totalDeliveryCosts.toLocaleString()} MRU\n`;
-    text += `📈 *Revenu Net :* ${report.netRevenue.toLocaleString()} MRU\n`;
+    text += `💰 *CA Brut :* ${report.grossRevenue.toLocaleString()} MRU\n`;
+    text += `🚚 *Frais Transport :* ${report.totalDeliveryCosts.toLocaleString()} MRU\n`;
+    text += `📈 *Taux d'Échec :* ${report.failureRate.toFixed(1)}%\n`;
+    text += `💵 *NET À ENCAISSER :* ${report.netRevenue.toLocaleString()} MRU\n`;
+
+    if (report.criticalCancellations.length > 0) {
+      text += `\n⚠️ *Pertes sur Livraisons :*\n`;
+      report.criticalCancellations.forEach((o) => {
+        const d = deliveries.find(del => del.orderId === o.id);
+        text += `• ${o.clientName} (Livreur: ${d ? d.deliveryName : 'N/A'}) : -${o.deliveryCost} MRU\n`;
+      });
+    }
 
     if (report.inProgress.length > 0) {
-      text += `\n⚠️ *Commandes en cours :*\n`;
+      text += `\n⏳ *Commandes en cours :*\n`;
       report.inProgress.forEach((o) => {
-        text += `• ${o.clientName} - ${STATUS_LABELS[o.status]}\n`;
+        text += `• ${o.clientName} (${STATUS_LABELS[o.status]})\n`;
       });
     }
     return text;
@@ -80,7 +100,14 @@ export default function ReportPage() {
       return;
     }
     try {
-      await generateDistributorReport(settings?.distributorName || "", settings?.productName || "",settings?.unitPrice || 0,activeCycle, orders);
+      await generateDistributorReport(
+        settings?.distributorName || "", 
+        settings?.productName || "",
+        settings?.unitPrice || 0,
+        activeCycle, 
+        orders,
+        deliveries
+      );
       toast.success('PDF généré !');
     } catch (err) {
       toast.error('Erreur lors de la génération du PDF');
@@ -107,8 +134,8 @@ export default function ReportPage() {
           <div style={{ color: 'var(--color-text-muted)', fontSize: '0.6875rem' }}>Terminées</div>
         </div>
         <div className="kpi-card" style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--color-danger)' }}>{report.cancelled.length}</div>
-          <div style={{ color: 'var(--color-text-muted)', fontSize: '0.6875rem' }}>Annulées</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--color-danger)' }}>{report.criticalCancellations.length}</div>
+          <div style={{ color: 'var(--color-text-muted)', fontSize: '0.6875rem' }}>Pertes (Post-envoi)</div>
         </div>
         <div className="kpi-card" style={{ textAlign: 'center' }}>
           <Clock size={18} color="var(--color-warning)" style={{ marginBottom: '0.375rem' }} />
@@ -133,9 +160,12 @@ export default function ReportPage() {
             <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--color-warning)' }}>{report.totalDeliveryCosts.toLocaleString()}</div>
           </div>
           <div style={{ textAlign: 'center', padding: '0.5rem', borderRadius: 12, background: 'rgba(255,255,255,0.03)' }}>
-            <div style={{ color: 'var(--color-text-muted)', fontSize: '0.625rem', marginBottom: '0.25rem' }}>BÉNÉFICE NET</div>
+            <div style={{ color: 'var(--color-text-muted)', fontSize: '0.625rem', marginBottom: '0.25rem' }}>NET À ENCAISSER</div>
             <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--color-primary-light)' }}>{report.netRevenue.toLocaleString()}</div>
           </div>
+        </div>
+        <div style={{ marginTop: '1rem', textAlign: 'center', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+          Taux d'échec après envoi : <span style={{ color: 'var(--color-danger)', fontWeight: 600 }}>{report.failureRate.toFixed(1)}%</span>
         </div>
       </div>
 
