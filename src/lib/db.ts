@@ -6,10 +6,21 @@ export type OrderStatus =
     | 'ENVOYEE_LIVREUR'
     | 'LIVREE'
     | 'PAYEE'
-    | 'ANNULEE';
+    | 'ANNULEE'
+    | 'TERMINEE'
+    | 'PARTIELLE';
 
 export type DeliveryZone = 'Nouakchott' | 'Wilaya';
 export type PaymentMethod = 'Cash' | 'Bankily' | 'Masrivi' | 'Sedad';
+
+export interface Cycle {
+    id?: number;
+    initialStock: number;
+    remainingStock: number;
+    startDate: string;
+    endDate?: string;
+    status: 'ACTIVE' | 'CLOSED';
+}
 
 export interface StockItem {
     id?: number;
@@ -17,6 +28,7 @@ export interface StockItem {
     quantity: number;
     date: string;
     note: string;
+    cycleId?: number;
 }
 
 export interface Order {
@@ -25,6 +37,7 @@ export interface Order {
     clientPhone: string;
     address: string;
     quantity: number;
+    quantityRemaining?: number;
     price: number;
     deliveryCost: number;
     deliveryZone: DeliveryZone;
@@ -32,6 +45,8 @@ export interface Order {
     status: OrderStatus;
     createdAt: string;
     closedAt: string | null;
+    cycleId: number;
+    transferable: boolean;
 }
 
 export interface Delivery {
@@ -45,13 +60,15 @@ class DistributorDatabase extends Dexie {
     stock!: EntityTable<StockItem, 'id'>;
     orders!: EntityTable<Order, 'id'>;
     deliveries!: EntityTable<Delivery, 'id'>;
+    cycles!: EntityTable<Cycle, 'id'>;
 
     constructor() {
         super('DistributeurDB');
-        this.version(1).stores({
-            stock: '++id, productName, date',
-            orders: '++id, status, createdAt, closedAt',
+        this.version(2).stores({
+            stock: '++id, productName, date, cycleId',
+            orders: '++id, status, createdAt, closedAt, cycleId, transferable',
             deliveries: '++id, orderId',
+            cycles: '++id, status, startDate',
         });
     }
 }
@@ -65,13 +82,18 @@ export const STATUS_LABELS: Record<OrderStatus, string> = {
     LIVREE: 'Livrée',
     PAYEE: 'Payée',
     ANNULEE: 'Annulée',
+    TERMINEE: 'Terminée',
+    PARTIELLE: 'Partielle',
 };
 
 export const STATUS_FLOW: Record<OrderStatus, OrderStatus[]> = {
     DEMANDE_RECUE: ['CONFIRMEE', 'ANNULEE'],
     CONFIRMEE: ['ENVOYEE_LIVREUR', 'ANNULEE'],
     ENVOYEE_LIVREUR: ['LIVREE', 'ANNULEE'],
-    LIVREE: ['PAYEE'],
-    PAYEE: [],
+    LIVREE: ['PAYEE', 'TERMINEE', 'PARTIELLE'],
+    PAYEE: ['TERMINEE'],
+    TERMINEE: [],
+    PARTIELLE: ['TERMINEE', 'ANNULEE'],
     ANNULEE: [],
 };
+

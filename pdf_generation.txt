@@ -1,0 +1,172 @@
+const { json } = require('stream/consumers');
+
+ const generatePDF = async (showToast = true) => {
+    try {
+      const { default: jsPDF } = await import('jspdf');
+      const { default: autoTable } = await import('jspdf-autotable');
+
+      const doc = new jsPDF();
+      let finalY = 20; // Position de départ
+
+      const cafeName = localStorage.getItem('cue8_cafe_name') || 'CUE .';
+      const today = new Date().toLocaleDateString('fr-FR', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      });
+
+      // 1. Header
+      doc.setFontSize(20);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${cafeName} - Rapport`, 14, finalY);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text(today, 14, finalY + 8);
+      
+      finalY += 25; // On descend après le header
+
+      // --- FONCTION POUR AJOUTER UNE SECTION PROPREMENT ---
+      const addSectionTitle = (title: string, spacing = 10) => {
+        // Vérifie s'il reste de la place sur la page (bas de page à 280)
+        if (finalY + spacing + 20 > 280) {
+          doc.addPage();
+          finalY = 20;
+        } else {
+          finalY += spacing;
+        }
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text(title, 14, finalY);
+        finalY += 5; // Espace entre titre et tableau
+      };
+
+      // 2. Résumé des Revenus
+      addSectionTitle('Résumé des Revenus', 0);
+      autoTable(doc, {
+        startY: finalY,
+        head: [['Catégorie', 'Montant (MRU)']],
+        body: [
+          ['Restaurant', restoRevenue.toFixed(2)],
+          ['Billard', billiardRevenue.toFixed(2)],
+          ['TOTAL', totalRevenue.toFixed(2)],
+        ],
+        theme: 'grid',
+        headStyles: { fillColor: [0, 180, 216] },
+        didDrawPage: (data) => { finalY = data.cursor!.y; } // Mise à jour CRUCIALE de finalY
+      });
+
+      // 3. Ventilation Paiements
+      addSectionTitle('Ventilation par Mode de Paiement');
+      const paymentRows = [
+        ...Object.entries(restoByPayment).map(([m, a]) => [`Resto - ${m}`, a.toFixed(2)]),
+        ...Object.entries(billiardByPayment).map(([l, a]) => [`Billard - ${l}`, a.toFixed(2)])
+      ];
+
+      if (paymentRows.length > 0) {
+        autoTable(doc, {
+          startY: finalY,
+          head: [['Mode', 'Montant (MRU)']],
+          body: paymentRows,
+          theme: 'grid',
+          headStyles: { fillColor: [0, 180, 216] },
+          didDrawPage: (data) => { finalY = data.cursor!.y; }
+        });
+      }
+
+      // 4. Détail Restaurant
+      addSectionTitle('Détail des Commandes Restaurant');
+      if (restoFinished.length > 0) {
+        autoTable(doc, {
+          startY: finalY,
+          head: [['#', 'Client', 'Articles', 'Total', 'Paiement']],
+          body: restoFinished.map((o) => [
+            `#${o.order_number}`,
+            o.customer_identifier,
+            o.items.map((i) => `${i.quantity}x ${i.product_name}`).join(', '),
+            o.total_amount.toFixed(2),
+            getPaymentLabel(o.payment_method || 'cash')
+          ]),
+          theme: 'striped',
+          headStyles: { fillColor: [0, 180, 216] },
+          styles: { fontSize: 8 },
+          columnStyles: { 2: { cellWidth: 50 } },
+          didDrawPage: (data) => { finalY = data.cursor!.y; }
+        });
+      } else {
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'italic');
+        doc.text("Aucune commande.", 14, finalY + 5);
+        finalY += 10;
+      }
+
+      // 5. Sessions Billard
+      addSectionTitle('Journal des Sessions Billard');
+      if (todayMatches.length > 0) {
+        autoTable(doc, {
+          startY: finalY,
+          head: [['Table', 'Matchs', 'Total', 'Paiement', 'Heure']],
+          body: todayMatches.map((m) => [
+            m.tableName, m.matchCount.toString(), m.totalAmount.toFixed(2),
+            getPaymentLabel(m.paymentMethod),
+            new Date(m.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+          ]),
+          theme: 'striped',
+          headStyles: { fillColor: [0, 180, 216] },
+          didDrawPage: (data) => { finalY = data.cursor!.y; }
+        });
+      }
+
+      doc.save(`Rapport_${new Date().toISOString().split('T')[0]}.pdf`);
+      if (showToast) toast.success('Rapport généré !');
+    } catch (err) {
+      console.error(err);
+      if (showToast) toast.error('Erreur PDF');
+    }
+  };
+
+
+package.json:{
+    {
+  "name": "cue_dot_app",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.2.0",
+    "date-fns": "^4.1.0",
+    "dexie": "^4.3.0",
+    "dexie-react-hooks": "^4.2.0",
+    "jspdf": "^4.2.0",
+    "jspdf-autotable": "^5.0.7",
+    "lucide-react": "^0.575.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-hot-toast": "^2.6.0",
+    "react-router-dom": "^7.13.0",
+    "tailwindcss": "^4.2.0",
+    "uuid": "^13.0.0",
+    "vite-plugin-pwa": "^1.2.0",
+    "zustand": "^5.0.11"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@types/uuid": "^11.0.0",
+    "@vitejs/plugin-react": "^5.1.1",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.5.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.48.0",
+    "vite": "^7.3.1"
+  }
+}
+
+}

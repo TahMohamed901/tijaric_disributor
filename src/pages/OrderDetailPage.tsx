@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDistributorStore } from '../stores/distributorStore';
-import { ArrowLeft, User, Phone, MapPin, CreditCard, Truck, Check, X as XIcon, ChevronRight } from 'lucide-react';
+import { ArrowLeft, User, Phone, MapPin, CreditCard, Truck, Check, X as XIcon, ChevronRight, RefreshCw, AlertCircle } from 'lucide-react';
 import { STATUS_LABELS, STATUS_FLOW, type OrderStatus } from '../lib/db';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import toast from 'react-hot-toast';
 
 export default function OrderDetailPage() {
   const { id } = useParams();
@@ -27,10 +28,10 @@ export default function OrderDetailPage() {
     );
   }
 
-  const nextStatuses = STATUS_FLOW[order.status];
-  const isClosed = order.status === 'PAYEE' || order.status === 'ANNULEE';
-  const allStatuses: OrderStatus[] = ['DEMANDE_RECUE', 'CONFIRMEE', 'ENVOYEE_LIVREUR', 'LIVREE', 'PAYEE'];
-  const currentIndex = order.status === 'ANNULEE' ? -1 : allStatuses.indexOf(order.status);
+  const nextStatuses = STATUS_FLOW[order.status] || [];
+  const isClosed = order.status === 'PAYEE' || order.status === 'ANNULEE' || order.status === 'TERMINEE';
+  const allStatuses: OrderStatus[] = ['DEMANDE_RECUE', 'CONFIRMEE', 'ENVOYEE_LIVREUR', 'LIVREE', 'PAYEE', 'TERMINEE'];
+  const currentIndex = order.status === 'ANNULEE' ? -1 : (order.status === 'PARTIELLE' ? 3 : allStatuses.indexOf(order.status));
 
   const handleStatusChange = async (newStatus: OrderStatus) => {
     if (newStatus === 'ENVOYEE_LIVREUR' && !delivery) {
@@ -38,6 +39,7 @@ export default function OrderDetailPage() {
       return;
     }
     await updateOrderStatus(order.id!, newStatus);
+    toast.success(`Statut mis à jour: ${STATUS_LABELS[newStatus]}`);
   };
 
   const handleDeliverySubmit = async () => {
@@ -45,6 +47,7 @@ export default function OrderDetailPage() {
     await addDelivery({ orderId: order.id!, deliveryName: deliveryForm.deliveryName, deliveryPhone: deliveryForm.deliveryPhone });
     await updateOrderStatus(order.id!, 'ENVOYEE_LIVREUR');
     setShowDeliveryModal(false);
+    toast.success('Livreur assigné');
   };
 
   let displayDate = order.createdAt;
@@ -61,8 +64,22 @@ export default function OrderDetailPage() {
         <span className={`badge status-${order.status.toLowerCase()}`}>{STATUS_LABELS[order.status]}</span>
       </div>
 
+      {/* Cycle & Transferable Info */}
+      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem' }}>
+        <div className="glass-card" style={{ flex: 1, padding: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <RefreshCw size={14} color="var(--color-primary-light)" />
+          <span style={{ fontSize: '0.75rem', fontWeight: 500 }}>Cycle #{order.cycleId}</span>
+        </div>
+        {order.transferable && (
+          <div className="glass-card" style={{ flex: 1, padding: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem', border: '1px solid var(--color-warning)' }}>
+            <AlertCircle size={14} color="var(--color-warning)" />
+            <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--color-warning)' }}>Transférable</span>
+          </div>
+        )}
+      </div>
+
       {/* Timeline */}
-      {order.status !== 'ANNULEE' && (
+      {order.status !== 'ANNULEE' && order.status !== 'PARTIELLE' && (
         <div className="glass-card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', position: 'relative' }}>
             <div style={{ position: 'absolute', top: 14, left: '10%', right: '10%', height: 3, background: 'var(--color-border)', borderRadius: 2 }} />
@@ -93,12 +110,12 @@ export default function OrderDetailPage() {
       <div className="glass-card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', textAlign: 'center' }}>
           <div><div style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>Quantité</div><div style={{ fontSize: '1.125rem', fontWeight: 700 }}>{order.quantity}</div></div>
-          <div><div style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>Prix</div><div style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--color-primary-light)' }}>{order.price.toLocaleString()} MRU</div></div>
+          <div><div style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>Prix Unitaire</div><div style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--color-primary-light)' }}>{order.price.toLocaleString()} MRU</div></div>
           <div><div style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>Livraison</div><div style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--color-warning)' }}>{order.deliveryCost.toLocaleString()} MRU</div></div>
         </div>
         <div style={{ marginTop: '0.875rem', paddingTop: '0.875rem', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>Revenu net</span>
-          <span style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--color-success)' }}>{(order.price - order.deliveryCost).toLocaleString()} MRU</span>
+          <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>Total à payer</span>
+          <span style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--color-success)' }}>{(order.price * order.quantity + order.deliveryCost).toLocaleString()} MRU</span>
         </div>
       </div>
 
@@ -133,6 +150,13 @@ export default function OrderDetailPage() {
           ))}
         </div>
       )}
+      
+      {order.status === 'TERMINEE' && (
+        <div className="empty-state" style={{ minHeight: 'auto', padding: '2rem' }}>
+          <Check size={32} color="var(--color-success)" />
+          <p style={{ marginTop: '0.5rem' }}>Commande terminée</p>
+        </div>
+      )}
 
       {/* Delivery modal */}
       {showDeliveryModal && (
@@ -165,3 +189,4 @@ function DetailRow({ icon, label, value, isPhone }: { icon: React.ReactNode; lab
     </div>
   );
 }
+

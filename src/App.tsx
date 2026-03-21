@@ -7,6 +7,7 @@ import {
   PlusCircle,
   FileText,
 } from 'lucide-react';
+import { Toaster } from 'react-hot-toast';
 import { useDistributorStore } from './stores/distributorStore';
 import DashboardPage from './pages/DashboardPage';
 import StockPage from './pages/StockPage';
@@ -32,6 +33,7 @@ export default function App() {
 
   return (
     <div style={{ minHeight: '100vh' }}>
+      <Toaster position="top-center" reverseOrder={false} />
       <Routes>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/stock" element={<StockPage />} />
@@ -59,3 +61,4 @@ export default function App() {
     </div>
   );
 }
+

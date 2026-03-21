@@ -1,35 +1,37 @@
 import { useMemo, useState } from 'react';
 import { useDistributorStore } from '../stores/distributorStore';
-import { FileText, Copy, Share2, Check, Clock, DollarSign, ShoppingCart } from 'lucide-react';
+import { FileText, Copy, Share2, Check, Clock, DollarSign, ShoppingCart, Download } from 'lucide-react';
 import { format, isToday, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { STATUS_LABELS } from '../lib/db';
+import { generateDistributorReport } from '../lib/pdfService';
+import toast from 'react-hot-toast';
 
 export default function ReportPage() {
-  const { orders } = useDistributorStore();
+  const { orders, activeCycle } = useDistributorStore();
   const [copied, setCopied] = useState(false);
 
   const report = useMemo(() => {
     const today = new Date();
     const dateStr = format(today, 'd MMMM yyyy', { locale: fr });
 
-    // Completed today: closedAt = today AND status is PAYEE or ANNULEE
+    // Completed today: closedAt = today AND status is PAYEE or ANNULEE or TERMINEE
     const completedToday = orders.filter((o) => {
       if (!o.closedAt) return false;
-      try { return isToday(parseISO(o.closedAt)) && (o.status === 'PAYEE' || o.status === 'ANNULEE'); } catch { return false; }
+      try { return isToday(parseISO(o.closedAt)) && (o.status === 'PAYEE' || o.status === 'ANNULEE' || o.status === 'TERMINEE'); } catch { return false; }
     });
-    const paid = completedToday.filter((o) => o.status === 'PAYEE');
+    const paid = completedToday.filter((o) => o.status === 'PAYEE' || o.status === 'TERMINEE');
     const cancelled = completedToday.filter((o) => o.status === 'ANNULEE');
 
     // In progress: not closed
     const inProgress = orders.filter((o) =>
-      o.status === 'DEMANDE_RECUE' || o.status === 'CONFIRMEE' || o.status === 'ENVOYEE_LIVREUR'
+      o.status === 'DEMANDE_RECUE' || o.status === 'CONFIRMEE' || o.status === 'ENVOYEE_LIVREUR' || o.status === 'PARTIELLE'
     );
 
     // Financials
-    const totalSales = paid.reduce((sum, o) => sum + o.price, 0);
+    const totalSales = paid.reduce((sum, o) => sum + (o.price * o.quantity), 0);
     const totalDelivery = paid.reduce((sum, o) => sum + o.deliveryCost, 0);
-    const netRevenue = totalSales - totalDelivery;
+    const netRevenue = totalSales; // Assuming price is net for distributor
 
     return { dateStr, paid, cancelled, inProgress, completedToday, totalSales, totalDelivery, netRevenue };
   }, [orders]);
@@ -58,11 +60,25 @@ export default function ReportPage() {
     await navigator.clipboard.writeText(generateText());
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+    toast.success('Rapport copié !');
   };
 
   const handleShare = () => {
     const text = encodeURIComponent(generateText());
     window.open(`https://wa.me/?text=${text}`, '_blank');
+  };
+
+  const handleDownloadPDF = async () => {
+    if (!activeCycle) {
+      toast.error('Aucun cycle actif pour générer un PDF');
+      return;
+    }
+    try {
+      await generateDistributorReport('Distributeur Ibrahim', activeCycle, orders);
+      toast.success('PDF généré !');
+    } catch (err) {
+      toast.error('Erreur lors de la génération du PDF');
+    }
   };
 
   return (
@@ -117,9 +133,24 @@ export default function ReportPage() {
         </div>
       </div>
 
+      {/* Action buttons */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1rem' }}>
+        <button className="btn-primary" onClick={handleDownloadPDF} style={{ width: '100%', justifyContent: 'center', padding: '0.875rem' }}>
+          <Download size={16} /> Télécharger le rapport détaillé (PDF)
+        </button>
+        <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <button className="btn-secondary" onClick={handleCopy} style={{ flex: 1, justifyContent: 'center', padding: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {copied ? <><Check size={16} /> Copié !</> : <><Copy size={16} /> Copier Texte</>}
+          </button>
+          <button className="btn-secondary" onClick={handleShare} style={{ flex: 1, justifyContent: 'center', padding: '0.875rem' }}>
+            <Share2 size={16} /> WhatsApp
+          </button>
+        </div>
+      </div>
+      
       {/* In progress orders */}
       {report.inProgress.length > 0 && (
-        <div className="glass-card" style={{ overflow: 'hidden', marginBottom: '1rem' }}>
+        <div className="glass-card" style={{ overflow: 'hidden' }}>
           <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--color-border)' }}>
             <h2 style={{ fontSize: '0.875rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Clock size={16} color="var(--color-warning)" /> Commandes en cours
@@ -140,16 +171,7 @@ export default function ReportPage() {
           })}
         </div>
       )}
-
-      {/* Action buttons */}
-      <div style={{ display: 'flex', gap: '0.75rem' }}>
-        <button className="btn-secondary" onClick={handleCopy} style={{ flex: 1, justifyContent: 'center', padding: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          {copied ? <><Check size={16} /> Copié !</> : <><Copy size={16} /> Copier</>}
-        </button>
-        <button className="btn-primary" onClick={handleShare} style={{ flex: 1, justifyContent: 'center', padding: '0.875rem' }}>
-          <Share2 size={16} /> WhatsApp
-        </button>
-      </div>
     </div>
   );
 }
+

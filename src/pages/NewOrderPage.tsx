@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useDistributorStore } from '../stores/distributorStore';
 import { useNavigate } from 'react-router-dom';
-import { ShoppingCart, Check } from 'lucide-react';
+import { ShoppingCart, Check, AlertTriangle } from 'lucide-react';
 import type { DeliveryZone, PaymentMethod } from '../lib/db';
+import toast from 'react-hot-toast';
 
 export default function NewOrderPage() {
-  const { addOrder } = useDistributorStore();
+  const { addOrder, activeCycle } = useDistributorStore();
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
@@ -19,9 +20,20 @@ export default function NewOrderPage() {
     paymentMethod: 'Cash' as PaymentMethod,
   });
 
-  const handleSubmit = async () => {
-    if (!form.clientName || !form.clientPhone || !form.quantity || !form.price) return;
-    await addOrder({
+  const [stockPrompt, setStockPrompt] = useState<{ msg: string; remaining: number } | null>(null);
+
+  const handleSubmit = async (forcePartial = false) => {
+    if (!form.clientName || !form.clientPhone || !form.quantity || !form.price) {
+      toast.error('Veuillez remplir tous les champs obligatoires');
+      return;
+    }
+
+    if (!activeCycle) {
+      toast.error('Aucun cycle actif. Veuillez démarrer un cycle sur le tableau de bord.');
+      return;
+    }
+
+    const res = await addOrder({
       clientName: form.clientName,
       clientPhone: form.clientPhone,
       address: form.address,
@@ -33,8 +45,17 @@ export default function NewOrderPage() {
       status: 'DEMANDE_RECUE',
       createdAt: new Date().toISOString(),
       closedAt: null,
-    });
-    navigate('/orders');
+      transferable: false, // Default, updated in store if partial
+    }, forcePartial);
+
+    if (res.success) {
+      toast.success('Commande enregistrée !');
+      navigate('/orders');
+    } else if (res.remaining !== undefined) {
+      setStockPrompt({ msg: res.msg!, remaining: res.remaining });
+    } else {
+      toast.error(res.msg || 'Erreur lors de l\'enregistrement');
+    }
   };
 
   return (
@@ -119,7 +140,7 @@ export default function NewOrderPage() {
               />
             </div>
             <div>
-              <label className="form-label">Prix total (MRU) *</label>
+              <label className="form-label">Prix unitaire (MRU) *</label>
               <input
                 className="form-input"
                 type="number"
@@ -170,13 +191,50 @@ export default function NewOrderPage() {
 
           <button
             className="btn-primary"
-            onClick={handleSubmit}
+            onClick={() => handleSubmit(false)}
             style={{ width: '100%', justifyContent: 'center', padding: '0.875rem', marginTop: '0.5rem' }}
           >
             <Check size={16} /> Enregistrer la commande
           </button>
         </div>
       </div>
+
+      {/* Stock Prompt Modal */}
+      {stockPrompt && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
+          background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: '1.5rem', zIndex: 100
+        }}>
+          <div className="glass-card" style={{ width: '100%', maxWidth: 400, padding: '1.5rem', textAlign: 'center' }}>
+            <div style={{ color: 'var(--color-warning)', marginBottom: '1rem' }}>
+              <AlertTriangle size={48} style={{ margin: '0 auto' }} />
+            </div>
+            <h3 style={{ marginBottom: '1rem' }}>Stock insuffisant</h3>
+            <p style={{ color: 'var(--color-text-muted)', marginBottom: '1.5rem' }}>
+              Il n'y a que <strong>{stockPrompt.remaining}</strong> produits disponibles. 
+              Voulez-vous enregistrer une commande pour ce stock partiel ?
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button 
+                className="btn-secondary" 
+                style={{ flex: 1 }} 
+                onClick={() => setStockPrompt(null)}
+              >
+                Refuser / Annuler
+              </button>
+              <button 
+                className="btn-primary" 
+                style={{ flex: 1 }} 
+                onClick={() => handleSubmit(true)}
+              >
+                Accepter ({stockPrompt.remaining})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

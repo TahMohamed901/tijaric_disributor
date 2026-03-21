@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useDistributorStore } from '../stores/distributorStore';
 import {
   Package,
@@ -7,32 +7,65 @@ import {
   Clock,
   DollarSign,
   TrendingUp,
+  Play,
+  FileText,
+  AlertCircle,
+  HelpCircle
 } from 'lucide-react';
 import { isToday, parseISO } from 'date-fns';
+import { generateDistributorReport } from '../lib/pdfService';
+import toast from 'react-hot-toast';
 
 export default function DashboardPage() {
-  const { stockItems, orders, loading } = useDistributorStore();
+  const { stockItems, orders, activeCycle, loading, startCycle, closeCycle, resetCycle } = useDistributorStore();
+  const [showStartModal, setShowStartModal] = useState(false);
+  const [initialStockInput, setInitialStockInput] = useState('12');
 
   const stats = useMemo(() => {
-    const totalStock = stockItems.reduce((sum, s) => sum + s.quantity, 0);
+    const totalStock = activeCycle ? activeCycle.remainingStock : 0;
     const todayOrders = orders.filter((o) => {
       try { return isToday(parseISO(o.createdAt)); } catch { return false; }
     });
     const todayCount = todayOrders.length;
-    const delivered = todayOrders.filter((o) => o.status === 'LIVREE' || o.status === 'PAYEE').length;
+    const delivered = todayOrders.filter((o) => o.status === 'LIVREE' || o.status === 'PAYEE' || o.status === 'TERMINEE').length;
     const pending = todayOrders.filter((o) =>
-      o.status === 'DEMANDE_RECUE' || o.status === 'CONFIRMEE' || o.status === 'ENVOYEE_LIVREUR'
+      o.status === 'DEMANDE_RECUE' || o.status === 'CONFIRMEE' || o.status === 'ENVOYEE_LIVREUR' || o.status === 'PARTIELLE'
     ).length;
 
     // Revenue: from orders closed today
     const closedToday = orders.filter((o) => {
       if (!o.closedAt) return false;
-      try { return isToday(parseISO(o.closedAt)) && o.status === 'PAYEE'; } catch { return false; }
+      try { return isToday(parseISO(o.closedAt)) && (o.status === 'PAYEE' || o.status === 'TERMINEE'); } catch { return false; }
     });
-    const revenue = closedToday.reduce((sum, o) => sum + o.price, 0);
+    const revenue = closedToday.reduce((sum, o) => sum + (o.price * o.quantity), 0);
 
     return { totalStock, todayCount, delivered, pending, revenue };
-  }, [stockItems, orders]);
+  }, [stockItems, orders, activeCycle]);
+
+  const handleStartCycle = async () => {
+    if (!initialStockInput) return;
+    await startCycle(Number(initialStockInput));
+    setShowStartModal(false);
+    toast.success('Cycle démarré !');
+  };
+
+  const handleGenerateReport = async () => {
+    if (!activeCycle) return;
+    try {
+      await generateDistributorReport('Distributeur Ibrahim', activeCycle, orders);
+      toast.success('Rapport généré !');
+    } catch (err) {
+      toast.error('Erreur PDF');
+    }
+  };
+
+  const handleCloseCycle = async () => {
+    if (!window.confirm('Voulez-vous clôturer ce cycle et générer le rapport ?')) return;
+    await handleGenerateReport();
+    await closeCycle();
+    await resetCycle();
+    toast.success('Cycle clôturé et nettoyé');
+  };
 
   if (loading) {
     return (
@@ -48,16 +81,43 @@ export default function DashboardPage() {
         <div>
           <h1 className="page-title">Tableau de bord</h1>
           <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-            Distributeur
+            {activeCycle ? `Cycle Actif #${activeCycle.id}` : 'Aucun cycle actif'}
           </p>
         </div>
-        <div style={{
-          width: 40, height: 40, borderRadius: 12,
-          background: 'linear-gradient(135deg, var(--color-primary), var(--color-accent))',
-          display: 'flex', alignItems: 'center', justifyContent: 'center'
-        }}>
-          <TrendingUp size={20} color="white" />
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button 
+            className="btn-secondary" 
+            style={{ padding: '0.5rem' }}
+            onClick={() => toast('Demande d\'aide envoyée au gérant', { icon: '🆘' })}
+          >
+            <HelpCircle size={20} />
+          </button>
+          <div style={{
+            width: 40, height: 40, borderRadius: 12,
+            background: 'linear-gradient(135deg, var(--color-primary), var(--color-accent))',
+            display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }}>
+            <TrendingUp size={20} color="white" />
+          </div>
         </div>
+      </div>
+
+      {/* Cycle Actions */}
+      <div style={{ marginBottom: '1.5rem', display: 'flex', gap: '0.75rem' }}>
+        {!activeCycle ? (
+          <button className="btn-primary" style={{ flex: 1 }} onClick={() => setShowStartModal(true)}>
+            <Play size={16} /> Démarrer un cycle
+          </button>
+        ) : (
+          <>
+            <button className="btn-secondary" style={{ flex: 1 }} onClick={handleGenerateReport}>
+              <FileText size={16} /> Rapport
+            </button>
+            <button className="btn-primary" style={{ flex: 1, backgroundColor: 'var(--color-error)' }} onClick={handleCloseCycle}>
+              <AlertCircle size={16} /> Clôturer Cycle
+            </button>
+          </>
+        )}
       </div>
 
       {/* KPI Cards Row 1 */}
@@ -147,7 +207,7 @@ export default function DashboardPage() {
                 <div>
                   <div style={{ fontWeight: 500, fontSize: '0.875rem' }}>{o.clientName}</div>
                   <div style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>
-                    {o.quantity} unité{o.quantity > 1 ? 's' : ''} · {o.price.toLocaleString()} MRU
+                    {o.quantity} unité{o.quantity > 1 ? 's' : ''} · {(o.price * o.quantity).toLocaleString()} MRU
                   </div>
                 </div>
                 <span className={`badge status-${o.status.toLowerCase()}`}>
@@ -155,13 +215,41 @@ export default function DashboardPage() {
                    o.status === 'CONFIRMEE' ? 'Confirmée' :
                    o.status === 'ENVOYEE_LIVREUR' ? 'En livraison' :
                    o.status === 'LIVREE' ? 'Livrée' :
-                   o.status === 'PAYEE' ? 'Payée' : 'Annulée'}
+                   o.status === 'PAYEE' ? 'Payée' : 
+                   o.status === 'TERMINEE' ? 'Terminée' :
+                   o.status === 'PARTIELLE' ? 'Partielle' : 'Annulée'}
                 </span>
               </a>
             ))}
           </div>
         )}
       </div>
+
+      {/* Start Cycle Modal (Simple Overlay) */}
+      {showStartModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
+          background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: '1.5rem', zIndex: 100
+        }}>
+          <div className="glass-card" style={{ width: '100%', maxWidth: 400, padding: '1.5rem' }}>
+            <h3 style={{ marginBottom: '1rem' }}>Démarrer un nouveau cycle</h3>
+            <label className="form-label">Stock initial</label>
+            <input 
+              className="form-input" 
+              type="number" 
+              value={initialStockInput} 
+              onChange={e => setInitialStockInput(e.target.value)}
+              placeholder="12"
+            />
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
+              <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setShowStartModal(false)}>Annuler</button>
+              <button className="btn-primary" style={{ flex: 1 }} onClick={handleStartCycle}>Démarrer</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
