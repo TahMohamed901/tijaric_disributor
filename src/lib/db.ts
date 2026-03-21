@@ -100,10 +100,10 @@ export const STATUS_FLOW: Record<OrderStatus, OrderStatus[]> = {
     DEMANDE_RECUE: ['CONFIRMEE', 'ANNULEE'],
     CONFIRMEE: ['ENVOYEE_LIVREUR', 'ANNULEE'],
     ENVOYEE_LIVREUR: ['LIVREE', 'ANNULEE'],
-    LIVREE: ['PAYEE', 'TERMINEE', 'PARTIELLE'],
-    PAYEE: ['TERMINEE'],
-    TERMINEE: [],
-    PARTIELLE: ['TERMINEE', 'ANNULEE'],
+    LIVREE: ['PAYEE', 'ANNULEE'],
+    PAYEE: [],
     ANNULEE: [],
+    TERMINEE: [],
+    PARTIELLE: [],
 };
 

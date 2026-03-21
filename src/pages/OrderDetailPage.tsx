@@ -30,8 +30,8 @@ export default function OrderDetailPage() {
 
   const nextStatuses = STATUS_FLOW[order.status] || [];
   const isClosed = order.status === 'PAYEE' || order.status === 'ANNULEE' || order.status === 'TERMINEE';
-  const allStatuses: OrderStatus[] = ['DEMANDE_RECUE', 'CONFIRMEE', 'ENVOYEE_LIVREUR', 'LIVREE', 'PAYEE', 'TERMINEE'];
-  const currentIndex = order.status === 'ANNULEE' ? -1 : (order.status === 'PARTIELLE' ? 3 : allStatuses.indexOf(order.status));
+  const allStatuses: OrderStatus[] = ['DEMANDE_RECUE', 'CONFIRMEE', 'ENVOYEE_LIVREUR', 'LIVREE', 'PAYEE'];
+  const currentIndex = order.status === 'ANNULEE' ? -1 : allStatuses.indexOf(order.status);
 
   const handleStatusChange = async (newStatus: OrderStatus) => {
     if (newStatus === 'ENVOYEE_LIVREUR' && !delivery) {

@@ -17,30 +17,42 @@ import { generateDistributorReport } from '../lib/pdfService';
 import toast from 'react-hot-toast';
 
 export default function DashboardPage() {
-  const { stockItems, orders, activeCycle, loading, startCycle, closeCycle, resetCycle } = useDistributorStore();
+  const { stockItems, orders, activeCycle, settings, loading, startCycle, closeCycle, resetCycle } = useDistributorStore();
   const [showStartModal, setShowStartModal] = useState(false);
   const [initialStockInput, setInitialStockInput] = useState('12');
 
   const stats = useMemo(() => {
     const totalStock = activeCycle ? activeCycle.remainingStock : 0;
+    const cycleId = activeCycle?.id;
+
+    // All orders for the active cycle
+    const cycleOrders = orders.filter(o => o.cycleId === cycleId);
+
+    // Cycle Revenue: Sum of PAYEE or TERMINEE orders
+    const cycleRevenue = cycleOrders
+      .filter(o => o.status === 'PAYEE' || o.status === 'TERMINEE')
+      .reduce((sum, o) => sum + (o.price * o.quantity), 0);
+
+    // Cycle Delivery Costs: Sum of all delivery costs for reachedDelivery orders
+    const cycleDeliveryCosts = cycleOrders
+      .filter(o => o.reachedDelivery)
+      .reduce((sum, o) => sum + (o.deliveryCost || 0), 0);
+
+    const netProfit = cycleRevenue - cycleDeliveryCosts;
+
+    // Today's Count
     const todayOrders = orders.filter((o) => {
       try { return isToday(parseISO(o.createdAt)); } catch { return false; }
     });
-    const todayCount = todayOrders.length;
-    const delivered = todayOrders.filter((o) => o.status === 'LIVREE' || o.status === 'PAYEE' || o.status === 'TERMINEE').length;
-    const pending = todayOrders.filter((o) =>
-      o.status === 'DEMANDE_RECUE' || o.status === 'CONFIRMEE' || o.status === 'ENVOYEE_LIVREUR' || o.status === 'PARTIELLE'
-    ).length;
 
-    // Revenue: from orders closed today
-    const closedToday = orders.filter((o) => {
-      if (!o.closedAt) return false;
-      try { return isToday(parseISO(o.closedAt)) && (o.status === 'PAYEE' || o.status === 'TERMINEE'); } catch { return false; }
-    });
-    const revenue = closedToday.reduce((sum, o) => sum + (o.price * o.quantity), 0);
-
-    return { totalStock, todayCount, delivered, pending, revenue };
-  }, [stockItems, orders, activeCycle]);
+    return { 
+      totalStock, 
+      todayCount: todayOrders.length, 
+      revenue: cycleRevenue, 
+      deliveryCosts: cycleDeliveryCosts, 
+      netProfit 
+    };
+  }, [orders, activeCycle]);
 
   const handleStartCycle = async () => {
     if (!initialStockInput) return;
@@ -52,7 +64,13 @@ export default function DashboardPage() {
   const handleGenerateReport = async () => {
     if (!activeCycle) return;
     try {
-      await generateDistributorReport('Distributeur Ibrahim', activeCycle, orders);
+      await generateDistributorReport(
+        settings?.distributorName || "", 
+        settings?.productName || "",
+        settings?.unitPrice || 0,
+        activeCycle, 
+        orders
+      );
       toast.success('Rapport généré !');
     } catch (err) {
       toast.error('Erreur PDF');
@@ -182,10 +200,7 @@ export default function DashboardPage() {
             <Truck size={18} color="var(--color-warning)" />
           </div>
           <div style={{ fontSize: '1.125rem', fontWeight: 700 }}>
-            {orders
-              .filter(o => o.cycleId === activeCycle?.id && o.reachedDelivery)
-              .reduce((sum, o) => sum + o.deliveryCost, 0)
-              .toLocaleString()}
+            {stats.deliveryCosts.toLocaleString()}
           </div>
           <div style={{ color: 'var(--color-text-muted)', fontSize: '0.6875rem' }}>Frais Livreurs</div>
         </div>
@@ -195,9 +210,7 @@ export default function DashboardPage() {
             <DollarSign size={18} color="var(--color-primary-light)" />
           </div>
           <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>
-            {(stats.revenue - orders
-              .filter(o => o.cycleId === activeCycle?.id && o.reachedDelivery)
-              .reduce((sum, o) => sum + o.deliveryCost, 0)).toLocaleString()}
+            {stats.netProfit.toLocaleString()}
           </div>
           <div style={{ color: 'var(--color-text-muted)', fontSize: '0.6875rem' }}>Bénéfice Net</div>
         </div>
