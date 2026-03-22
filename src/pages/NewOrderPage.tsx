@@ -20,12 +20,14 @@ export default function NewOrderPage() {
     clientPhone: '',
     address: '',
     quantity: '',
+    price: settings?.unitPrice?.toString() || '',
     deliveryZone: 'Nouakchott' as DeliveryZone,
     paymentMethod: 'À la livraison' as PaymentMethod,
   });
 
-  const unitPrice = settings?.unitPrice || 0;
-  const totalPrice = Number(form.quantity) * unitPrice;
+  const defaultUnitPrice = settings?.unitPrice || 0;
+  const currentPrice = form.price !== '' ? Number(form.price) : defaultUnitPrice;
+  const totalPrice = Number(form.quantity) * currentPrice;
 
   const handleSubmit = async () => {
     if (!form.clientName || !form.clientPhone || !form.quantity) {
@@ -48,7 +50,7 @@ export default function NewOrderPage() {
       clientPhone: form.clientPhone,
       address: form.address,
       quantity: Number(form.quantity),
-      price: unitPrice, // Save current unit price for history
+      price: currentPrice, // Save current unit price for history
       deliveryCost: 0,
       deliveryZone: form.deliveryZone,
       paymentMethod: form.paymentMethod,
@@ -209,15 +211,14 @@ export default function NewOrderPage() {
               )}
             </div>
             <div>
-              <label className="form-label">Prix (Fixe)</label>
-              <div style={{ 
-                height: '42px', display: 'flex', alignItems: 'center', 
-                padding: '0 1rem', background: 'rgba(255,255,255,0.03)', 
-                borderRadius: 12, border: '1px solid var(--color-border)',
-                fontWeight: 600, color: 'var(--color-primary-light)'
-              }}>
-                {unitPrice} MRU
-              </div>
+              <label className="form-label">Prix unitaire (MRU)</label>
+              <input
+                className="form-input"
+                type="number"
+                placeholder={defaultUnitPrice.toString()}
+                value={form.price}
+                onChange={(e) => setForm({ ...form, price: e.target.value })}
+              />
             </div>
           </div>
 
