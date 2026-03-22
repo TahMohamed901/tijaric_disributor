@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useDistributorStore } from '../stores/distributorStore';
 import { FileText, Copy, Share2, Check, Clock, DollarSign, ShoppingCart, Download } from 'lucide-react';
 import { format, isToday, parseISO } from 'date-fns';
@@ -12,6 +12,18 @@ export default function ReportPage() {
   const { orders, activeCycle, settings, deliveries } = useDistributorStore();
   const [copied, setCopied] = useState(false);
 
+  useEffect(() => {
+    const alreadyReloaded = sessionStorage.getItem('distributions_reload_done');
+
+    if (!alreadyReloaded) {
+      sessionStorage.setItem('distributions_reload_done', 'true');
+
+      // petit délai pour UX
+      setTimeout(() => {
+        forceReloadFromServer();
+      }, 300);
+    }
+  }, []);
   const report = useMemo(() => {
     const today = new Date();
     const dateStr = format(today, 'd MMMM yyyy', { locale: fr });

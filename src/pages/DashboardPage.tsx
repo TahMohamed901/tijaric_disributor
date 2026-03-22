@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useDistributorStore } from '../stores/distributorStore';
 import {
   Package,
@@ -20,7 +20,11 @@ export default function DashboardPage() {
   const { stockItems, orders, activeCycle, settings, deliveries, loading, startCycle, closeCycle, resetCycle } = useDistributorStore();
   const [showStartModal, setShowStartModal] = useState(false);
   const [initialStockInput, setInitialStockInput] = useState('12');
-
+  useEffect(() => {
+    return () => {
+      sessionStorage.removeItem('distributions_reload_done');
+    };
+  }, []);
   const stats = useMemo(() => {
     const totalStock = activeCycle ? activeCycle.remainingStock : 0;
     const cycleId = activeCycle?.id;

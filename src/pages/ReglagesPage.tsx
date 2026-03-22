@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useDistributorStore } from '../stores/distributorStore';
 import { Settings, Save, Package, User, DollarSign, Download, Upload, Trash2, Database } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { forceReloadFromServer } from '../lib/utils';
 
 export default function ReglagesPage() {
   const { settings, updateSettings, exportData, importData, resetData } = useDistributorStore();
@@ -21,6 +22,8 @@ export default function ReglagesPage() {
       unitPrice: settings?.unitPrice?.toString() || '',
     });
   }, [settings]);
+
+  
 
   const handleSave = async () => {
     if (!form.distributorName || !form.productName || !form.unitPrice) {
