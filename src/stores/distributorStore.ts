@@ -32,6 +32,11 @@ interface DistributorStore {
     addDelivery: (d: Omit<Delivery, 'id'>, deliveryCost: number) => Promise<void>;
     // Logic helper
     recalculateStock: () => Promise<void>;
+
+    // Data Management
+    exportData: () => Promise<string>;
+    importData: (jsonData: string) => Promise<void>;
+    resetData: () => Promise<void>;
 }
 
 export const useDistributorStore = create<DistributorStore>((set, get) => ({
@@ -196,6 +201,44 @@ export const useDistributorStore = create<DistributorStore>((set, get) => ({
     addDelivery: async (d: Omit<Delivery, 'id'>, deliveryCost: number) => {
         await db.deliveries.add(d);
         await db.orders.update(d.orderId, { deliveryCost, reachedDelivery: true });
+        await get().loadAll();
+    },
+
+    exportData: async () => {
+        const [stock, orders, deliveries, cycles, settingsArr] = await Promise.all([
+            db.stock.toArray(),
+            db.orders.toArray(),
+            db.deliveries.toArray(),
+            db.cycles.toArray(),
+            db.settings.toArray(),
+        ]);
+        return JSON.stringify({ stock, orders, deliveries, cycles, settings: settingsArr });
+    },
+
+    importData: async (jsonData: string) => {
+        try {
+            const data = JSON.parse(jsonData);
+            await db.transaction('rw', [db.stock, db.orders, db.deliveries, db.cycles, db.settings], async () => {
+                if (data.stock) { await db.stock.clear(); await db.stock.bulkAdd(data.stock); }
+                if (data.orders) { await db.orders.clear(); await db.orders.bulkAdd(data.orders); }
+                if (data.deliveries) { await db.deliveries.clear(); await db.deliveries.bulkAdd(data.deliveries); }
+                if (data.cycles) { await db.cycles.clear(); await db.cycles.bulkAdd(data.cycles); }
+                if (data.settings) { await db.settings.clear(); await db.settings.bulkAdd(data.settings); }
+            });
+            await get().loadAll();
+        } catch (e) {
+            console.error(e);
+            throw new Error('Format de fichier invalide');
+        }
+    },
+
+    resetData: async () => {
+        await db.transaction('rw', [db.stock, db.orders, db.deliveries, db.cycles], async () => {
+            await db.stock.clear();
+            await db.orders.clear();
+            await db.deliveries.clear();
+            await db.cycles.clear();
+        });
         await get().loadAll();
     },
 }));
